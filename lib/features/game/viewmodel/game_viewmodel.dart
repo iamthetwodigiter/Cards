@@ -26,13 +26,17 @@ class GameViewModel extends _$GameViewModel {
   void _connect(String avatar) {
     _client = WebSocketClient(roomId: roomId, playerName: playerName, avatar: avatar);
     _client!.connect().listen((data) {
-      final message = jsonDecode(data);
-      if (message['type'] == 'state_update') {
-        state = GameState.fromJson(message['state']);
-      } else if (message['type'] == 'game_event') {
-        _eventController.add(GameEvent.fromJson(message['event']));
-      } else if (message['type'] == 'error') {
-        debugPrint('Error: ${message['message']}');
+      try {
+        final message = jsonDecode(data);
+        if (message['type'] == 'state_update') {
+          state = GameState.fromJson(message['state'] as Map<String, dynamic>);
+        } else if (message['type'] == 'game_event') {
+          _eventController.add(GameEvent.fromJson(message['event'] as Map<String, dynamic>));
+        } else if (message['type'] == 'error') {
+          debugPrint('Error: ${message['message']}');
+        }
+      } catch (e, st) {
+        debugPrint('Error processing websocket message: $e\n$st');
       }
     }, onError: (error) {
       debugPrint('WebSocket Error: $error');

@@ -1,3 +1,4 @@
+import 'package:cards/core/utils/toast_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../tutorial/view/tutorial_screen.dart';
@@ -47,7 +48,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _createRoom() async {
     final name = _nameController.text.trim();
-    if (name.isEmpty) return;
+    if (name.isEmpty) {
+      ToastUtils.showCustomToast(context, "Please enter your name!", color: Colors.red.shade700);
+      return;
+    }
 
     setState(() => _isLoading = true);
     try {
@@ -78,7 +82,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _joinRoom() async {
     final name = _nameController.text.trim();
     final roomId = _roomController.text.trim();
-    if (name.isEmpty || roomId.isEmpty) return;
+    if (name.isEmpty) {
+      ToastUtils.showCustomToast(context, "Please enter your name!", color: Colors.red.shade700);
+      return;
+    }
+    if (roomId.isEmpty) {
+      ToastUtils.showCustomToast(context, "Please enter a Room ID!", color: Colors.red.shade700);
+      return;
+    }
 
     await ref.read(homeViewModelProvider.notifier).savePlayerName(name);
     if (mounted) {
