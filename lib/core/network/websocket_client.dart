@@ -15,7 +15,12 @@ class WebSocketClient {
   WebSocketClient({required this.roomId, required this.playerName, this.avatar = ""});
 
   Stream<dynamic> connect() {
-    final uri = Uri.parse('$wsBaseUrl/$roomId/$playerName?avatar=$avatar');
+    final uri = Uri(
+      scheme: kIsSecure ? "wss" : "ws",
+      host: kServerHost,
+      pathSegments: ["ws", roomId, playerName],
+      queryParameters: avatar.isNotEmpty ? {"avatar": avatar} : null,
+    );
     _channel = WebSocketChannel.connect(uri);
     return _channel!.stream;
   }
