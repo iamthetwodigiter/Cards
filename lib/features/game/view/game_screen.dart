@@ -85,6 +85,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   void _showAnimationOverlay(String title, String subtitle, IconData? iconData, Color? iconColor) {
+    bool isDialogOpen = true;
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -155,9 +156,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           ),
         );
       },
-    );
+    ).then((_) {
+      isDialogOpen = false;
+    });
+
     Future.delayed(const Duration(seconds: 4), () {
-      if (mounted && Navigator.canPop(context)) {
+      if (mounted && isDialogOpen) {
         Navigator.pop(context);
       }
     });
