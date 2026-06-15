@@ -433,13 +433,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                       ),
                     ),
                     Expanded(
-                      flex: 1,
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          IconButton(
-                            icon: const Icon(Icons.info, color: Colors.white, size: 32),
-                            onPressed: () {
+                          InkWell(
+                            child: const Icon(Icons.info, color: Colors.white, size: 25),
+                            onTap: () {
                               showDialog(
                                 context: context,
                                 builder: (ctx) => AlertDialog(
@@ -466,10 +465,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                               );
                             },
                           ),
-                          const SizedBox(height: 8),
-                          IconButton(
-                            icon: const Icon(Icons.exit_to_app, color: Colors.white, size: 32),
-                            onPressed: () async {
+                          InkWell(
+                            child: const Icon(Icons.exit_to_app, color: Colors.white, size: 25),
+                            onTap: () async {
                               final shouldLeave = await _showExitDialog(
                                 context,
                               );
