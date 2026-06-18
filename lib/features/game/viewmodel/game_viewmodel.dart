@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import '../../../core/network/websocket_client.dart';
 import '../models/game_models.dart';
 
@@ -23,8 +25,28 @@ class GameViewModel extends _$GameViewModel {
     return null;
   }
 
-  void _connect(String avatar) {
-    _client = WebSocketClient(roomId: roomId, playerName: playerName, avatar: avatar);
+  void _connect(String avatar) async {
+    String deviceInfo = "Unknown";
+    try {
+      if (!kIsWeb) {
+        final DeviceInfoPlugin deviceInfoPlugin = DeviceInfoPlugin();
+        if (Platform.isAndroid) {
+          final info = await deviceInfoPlugin.androidInfo;
+          deviceInfo = "${info.brand} ${info.model}";
+        } else if (Platform.isIOS) {
+          final info = await deviceInfoPlugin.iosInfo;
+          deviceInfo = "${info.name} ${info.systemName}";
+        } else if (Platform.isWindows) {
+          final info = await deviceInfoPlugin.windowsInfo;
+          deviceInfo = "Windows ${info.computerName}";
+        } else if (Platform.isMacOS) {
+          final info = await deviceInfoPlugin.macOsInfo;
+          deviceInfo = "MacOS ${info.computerName}";
+        }
+      }
+    } catch (_) {}
+
+    _client = WebSocketClient(roomId: roomId, playerName: playerName, avatar: avatar, deviceInfo: deviceInfo);
     _client!.connect().listen((data) {
       try {
         final message = jsonDecode(data);
@@ -75,5 +97,25 @@ class GameViewModel extends _$GameViewModel {
 
   void passTurn() {
     _client?.send(jsonEncode({"action": "pass_turn"}));
+  }
+
+  void sendEmoji(String emoji) {
+    _client?.send(jsonEncode({"action": "send_emoji", "emoji": emoji}));
+  }
+
+  void proposeShuffle() {
+    _client?.send(jsonEncode({"action": "propose_shuffle"}));
+  }
+
+  void voteShuffle(bool vote) {
+    _client?.send(jsonEncode({"action": "vote_shuffle", "vote": vote}));
+  }
+
+  void restartGame() {
+    _client?.send(jsonEncode({"action": "restart_game"}));
+  }
+
+  void closeRoom() {
+    _client?.send(jsonEncode({"action": "close_room"}));
   }
 }

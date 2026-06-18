@@ -5,6 +5,8 @@ import '../viewmodel/game_viewmodel.dart';
 import '../models/game_models.dart';
 import '../widgets/uno_card_widget.dart';
 import 'package:dice_bear/dice_bear.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 import 'dart:async';
 
 import 'package:flutter/services.dart';
@@ -77,6 +79,20 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       subtitle = "${event.data['loser_name']} lost the game!";
       iconData = Icons.sentiment_very_dissatisfied;
       iconColor = Colors.blueGrey;
+    } else if (event.event == 'emoji_reaction') {
+      final emoji = event.data['emoji'];
+      final pName = event.data['player_name'];
+      ToastUtils.showCustomToast(
+        context,
+        "$pName $emoji",
+        color: Colors.blue.shade800,
+      );
+    } else if (event.event == 'shuffle_completed') {
+      ToastUtils.showCustomToast(
+        context,
+        "Deck shuffled!",
+        color: Colors.green.shade800,
+      );
     }
 
     if (title.isNotEmpty) {
@@ -84,17 +100,22 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     }
   }
 
-  void _showAnimationOverlay(String title, String subtitle, IconData? iconData, Color? iconColor) {
+  void _showAnimationOverlay(
+    String title,
+    String subtitle,
+    IconData? iconData,
+    Color? iconColor,
+  ) {
     bool isDialogOpen = true;
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: "event",
-      transitionDuration: const Duration(milliseconds: 500),
+      transitionDuration: const Duration(milliseconds: 200),
       pageBuilder: (context, anim1, anim2) {
         return Center(
           child: ScaleTransition(
-            scale: CurvedAnimation(parent: anim1, curve: Curves.elasticOut),
+            scale: CurvedAnimation(parent: anim1, curve: Curves.easeOutBack),
             child: Material(
               color: Colors.transparent,
               child: Container(
@@ -119,8 +140,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                         height: 150,
                         child: TweenAnimationBuilder<double>(
                           tween: Tween<double>(begin: 0.5, end: 1.2),
-                          duration: const Duration(milliseconds: 1500),
-                          curve: Curves.elasticOut,
+                          duration: const Duration(milliseconds: 500),
+                          curve: Curves.easeOutBack,
                           builder: (context, value, child) {
                             return Transform.scale(
                               scale: value,
@@ -160,11 +181,47 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       isDialogOpen = false;
     });
 
-    Future.delayed(const Duration(seconds: 4), () {
+    Future.delayed(const Duration(seconds: 2), () {
       if (mounted && isDialogOpen) {
         Navigator.pop(context);
       }
     });
+  }
+
+  void _showEmojiPicker(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          height: 300,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(16),
+              topRight: Radius.circular(16),
+            ),
+          ),
+          child: EmojiPicker(
+            onEmojiSelected: (category, emoji) {
+              ref
+                  .read(
+                    gameViewModelProvider(
+                      widget.roomId,
+                      widget.playerName,
+                      avatar: widget.avatar,
+                    ).notifier,
+                  )
+                  .sendEmoji(emoji.emoji);
+              Navigator.of(ctx).pop();
+            },
+            config: const Config(
+              bottomActionBarConfig: BottomActionBarConfig(showSearchViewButton: false),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -225,7 +282,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     if (handLength == 1 && card.value.index > CardValue.nine.index) {
       return false;
     }
-    if (handLength == state.initialCards && card.value.index > CardValue.nine.index) {
+    if (handLength == state.initialCards &&
+        card.value.index > CardValue.nine.index) {
       return false;
     }
     if (state.pendingPenalty > 0) {
@@ -261,7 +319,24 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         title: Text("Room: ${widget.roomId}"),
         actions: [
           IconButton(
+            icon: const Icon(Icons.close),
+            tooltip: "Close Room",
+            onPressed: () {
+              ref
+                  .read(
+                    gameViewModelProvider(
+                      widget.roomId,
+                      widget.playerName,
+                      avatar: widget.avatar,
+                    ).notifier,
+                  )
+                  .closeRoom();
+              Navigator.of(context).pop();
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.exit_to_app),
+            tooltip: "Leave",
             onPressed: () => Navigator.of(context).pop(),
           ),
         ],
@@ -291,8 +366,39 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                     ),
                   ),
                   const SizedBox(height: 40),
-                  if (state.players.length >= 2)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.copy),
+                        label: const Text("Copy ID"),
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: widget.roomId));
+                          ToastUtils.showCustomToast(context, "Room ID copied!");
+                        },
+                      ),
+                      const SizedBox(width: 16),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.share),
+                        label: const Text("Share Link"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green.shade600,
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: () {
+                          final link = "https://thetwodigiter.app/join/${widget.roomId}";
+                          Share.share("Let's play UNO! Join my room using code: ${widget.roomId} or click this link to join directly: $link");
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 40),
+                  if (state.players.length >= 2 && state.players.isNotEmpty && state.players.first.name == widget.playerName)
                     ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+                        textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      ),
                       onPressed: () => ref
                           .read(
                             gameViewModelProvider(
@@ -303,6 +409,11 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                           )
                           .startGame(),
                       child: const Text("Start Game"),
+                    )
+                  else if (state.players.length >= 2)
+                    const Text(
+                      "Waiting for the host to start...",
+                      style: TextStyle(fontSize: 16, fontStyle: FontStyle.italic, color: Colors.white70),
                     ),
                 ],
               ),
@@ -327,6 +438,35 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final opponents = state.players
         .where((p) => p.name != widget.playerName)
         .toList();
+
+    Widget buildColorIndicator(CardColor color) {
+      Color bgColor;
+      switch (color) {
+        case CardColor.red:
+          bgColor = Colors.red;
+          break;
+        case CardColor.blue:
+          bgColor = Colors.blue;
+          break;
+        case CardColor.green:
+          bgColor = Colors.green;
+          break;
+        case CardColor.yellow:
+          bgColor = Colors.yellow;
+          break;
+        default:
+          bgColor = Colors.black;
+      }
+      return Container(
+        width: 20,
+        height: 20,
+        decoration: BoxDecoration(
+          color: bgColor,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white),
+        ),
+      );
+    }
 
     return PopScope(
       canPop: false,
@@ -441,7 +581,11 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
                           InkWell(
-                            child: const Icon(Icons.info, color: Colors.white, size: 25),
+                            child: const Icon(
+                              Icons.info,
+                              color: Colors.white,
+                              size: 25,
+                            ),
                             onTap: () {
                               showDialog(
                                 context: context,
@@ -449,14 +593,56 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                                   title: const Text("Game Info"),
                                   content: Column(
                                     mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Text("Room ID: ${widget.roomId}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            "Room ID: ${widget.roomId}",
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 18,
+                                            ),
+                                          ),
+                                          const Spacer(),
+                                          IconButton(
+                                            icon: const Icon(Icons.copy, size: 20),
+                                            tooltip: "Copy Room ID",
+                                            onPressed: () {
+                                              Clipboard.setData(ClipboardData(text: widget.roomId));
+                                              ToastUtils.showCustomToast(context, "Room ID copied to clipboard!");
+                                            },
+                                          ),
+                                        ],
+                                      ),
                                       const SizedBox(height: 8),
-                                      Text("Direction: ${state.direction == 1 ? 'Clockwise' : 'Counter-Clockwise'}"),
-                                      Text("Stacking Enabled: ${state.stackingEnabled ? 'Yes' : 'No'}"),
+                                      ElevatedButton.icon(
+                                        icon: const Icon(Icons.share, size: 18),
+                                        label: const Text("Share Link"),
+                                        style: ElevatedButton.styleFrom(
+                                          minimumSize: const Size.fromHeight(36),
+                                        ),
+                                        onPressed: () {
+                                          final link = "https://thetwodigiter.app/join/${widget.roomId}";
+                                          Share.share("Let's play UNO! Join my room using code: ${widget.roomId} or click this link to join directly: $link");
+                                        },
+                                      ),
+                                      const Divider(height: 24),
+                                      Text(
+                                        "Direction: ${state.direction == 1 ? 'Clockwise' : 'Counter-Clockwise'}",
+                                      ),
+                                      Text(
+                                        "Stacking Enabled: ${state.stackingEnabled ? 'Yes' : 'No'}",
+                                      ),
                                       if (state.pendingPenalty > 0)
-                                        Text("Pending Draw Penalty: +${state.pendingPenalty} cards", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                                        Text(
+                                          "Pending Draw Penalty: +${state.pendingPenalty} cards",
+                                          style: const TextStyle(
+                                            color: Colors.red,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
                                     ],
                                   ),
                                   actions: [
@@ -470,7 +656,11 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                             },
                           ),
                           InkWell(
-                            child: const Icon(Icons.exit_to_app, color: Colors.white, size: 25),
+                            child: const Icon(
+                              Icons.exit_to_app,
+                              color: Colors.white,
+                              size: 25,
+                            ),
                             onTap: () async {
                               final shouldLeave = await _showExitDialog(
                                 context,
@@ -481,12 +671,23 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                             },
                           ),
                           if (state.status == GameStatus.finished)
-                            const Text(
-                              "Finished!",
-                              style: TextStyle(
-                                color: Colors.yellow,
-                                fontWeight: FontWeight.bold,
+                            ElevatedButton(
+                              onPressed: () {
+                                ref
+                                    .read(
+                                      gameViewModelProvider(
+                                        widget.roomId,
+                                        widget.playerName,
+                                        avatar: widget.avatar,
+                                      ).notifier,
+                                    )
+                                    .restartGame();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
                               ),
+                              child: const Text("Next Round"),
                             ),
                         ],
                       ),
@@ -568,6 +769,26 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                           ),
                         ),
                       const SizedBox(width: 20),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.shuffle,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                        tooltip: "Shuffle Deck",
+                        onPressed: () {
+                          ref
+                              .read(
+                                gameViewModelProvider(
+                                  widget.roomId,
+                                  widget.playerName,
+                                  avatar: widget.avatar,
+                                ).notifier,
+                              )
+                              .proposeShuffle();
+                        },
+                      ),
+                      const SizedBox(width: 20),
                       if (state.discardPile.isNotEmpty)
                         AnimatedSwitcher(
                           duration: const Duration(milliseconds: 150),
@@ -599,7 +820,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                                 Positioned(
                                   top: 0,
                                   right: 0,
-                                  child: _buildColorIndicator(
+                                  child: buildColorIndicator(
                                     state.currentColor!,
                                   ),
                                 ),
@@ -678,7 +899,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                             Text(
                               "Click the deck to take ${state.pendingPenalty} cards!",
                               style: const TextStyle(
-                                color: Colors.red,
+                                color: Colors.white,
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -692,38 +913,60 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                          ElevatedButton(
-                            onPressed: () {
-                              final catchable = state.players.where((p) => p.id != me.id && p.handCount == 1 && !p.unoCalled).toList();
-                              if (catchable.isNotEmpty) {
-                                ref
-                                    .read(
-                                      gameViewModelProvider(
-                                        widget.roomId,
-                                        widget.playerName,
-                                        avatar: widget.avatar,
-                                      ).notifier,
-                                    )
-                                    .catchUno(catchable.first.id);
-                              } else {
-                                ref
-                                    .read(
-                                      gameViewModelProvider(
-                                        widget.roomId,
-                                        widget.playerName,
-                                        avatar: widget.avatar,
-                                      ).notifier,
-                                    )
-                                    .sayUno();
-                              }
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                            ),
-                            child: const Text(
-                              "Call UNO",
-                              style: TextStyle(color: Colors.white),
-                            ),
+                          Row(
+                            spacing: 10,
+                            children: [
+                              InkWell(
+                                child: const Icon(
+                                  Icons.emoji_emotions,
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
+                                onTap: () {
+                                  _showEmojiPicker(context, ref);
+                                },
+                              ),
+                              ElevatedButton(
+                                onPressed: () {
+                                  final catchable = state.players
+                                      .where(
+                                        (p) =>
+                                            p.id != me.id &&
+                                            p.handCount == 1 &&
+                                            !p.unoCalled,
+                                      )
+                                      .toList();
+                                  if (catchable.isNotEmpty) {
+                                    ref
+                                        .read(
+                                          gameViewModelProvider(
+                                            widget.roomId,
+                                            widget.playerName,
+                                            avatar: widget.avatar,
+                                          ).notifier,
+                                        )
+                                        .catchUno(catchable.first.id);
+                                  } else {
+                                    ref
+                                        .read(
+                                          gameViewModelProvider(
+                                            widget.roomId,
+                                            widget.playerName,
+                                            avatar: widget.avatar,
+                                          ).notifier,
+                                        )
+                                        .sayUno();
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                ),
+                                child: const Text(
+                                  "Call UNO",
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ),
+                            ],
                           ),
                           if (isMyTurn && state.hasDrawn) ...[
                             const SizedBox(width: 8),
@@ -813,38 +1056,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildColorIndicator(CardColor color) {
-    Color c;
-    switch (color) {
-      case CardColor.red:
-        c = const Color(0xFFE53935);
-        break;
-      case CardColor.blue:
-        c = const Color(0xFF1E88E5);
-        break;
-      case CardColor.green:
-        c = const Color(0xFF43A047);
-        break;
-      case CardColor.yellow:
-        c = const Color(0xFFFFB300);
-        break;
-      default:
-        c = Colors.black;
-    }
-    return Container(
-      width: 20,
-      height: 20,
-      decoration: BoxDecoration(
-        color: c,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 3),
-        boxShadow: const [
-          BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(2, 2)),
-        ],
       ),
     );
   }

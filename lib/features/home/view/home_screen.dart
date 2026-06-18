@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:cards/core/utils/toast_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,8 @@ import '../../game/view/game_screen.dart';
 import '../viewmodel/home_viewmodel.dart';
 import '../../settings/view/settings_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:app_links/app_links.dart';
+import 'dart:async';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -20,6 +23,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _isLoading = false;
   int _initialCards = 7;
   String _avatarSeed = "Felix";
+  late final AppLinks _appLinks;
+  StreamSubscription<Uri>? _linkSubscription;
 
   @override
   void initState() {
@@ -33,6 +38,48 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
       _loadAvatar();
     });
+    _initAppLinks();
+  }
+
+  @override
+  void dispose() {
+    _linkSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initAppLinks() async {
+    _appLinks = AppLinks();
+
+    // Check initial link if app was cold started
+    try {
+      final initialLink = await _appLinks.getInitialLink();
+      if (initialLink != null) {
+        _handleDeepLink(initialLink);
+      }
+    } catch (e) {
+      debugPrint("Failed to get initial app link: $e");
+    }
+
+    // Listen to links while app is running
+    _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
+      _handleDeepLink(uri);
+    });
+  }
+
+  void _handleDeepLink(Uri uri) {
+    if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'join') {
+      final roomId = uri.pathSegments[1];
+      if (roomId.isNotEmpty) {
+        setState(() {
+          _roomController.text = roomId;
+        });
+        ToastUtils.showCustomToast(
+          context,
+          "Room ID loaded: $roomId",
+          color: Colors.green,
+        );
+      }
+    }
   }
 
   Future<void> _loadAvatar() async {
@@ -42,15 +89,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final savedName = prefs.getString('player_name');
       if (savedName != null && savedName.isNotEmpty) {
         _nameController.text = savedName;
+      } else {
+        _nameController.text = "Player_${Random().nextInt(9000) + 1000}";
       }
     });
   }
 
   void _createRoom() async {
-    final name = _nameController.text.trim();
+    String name = _nameController.text.trim();
     if (name.isEmpty) {
-      ToastUtils.showCustomToast(context, "Please enter your name!", color: Colors.red.shade700);
-      return;
+      name = "Player_${Random().nextInt(9000) + 1000}";
+      _nameController.text = name;
     }
 
     setState(() => _isLoading = true);
@@ -80,14 +129,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _joinRoom() async {
-    final name = _nameController.text.trim();
+    String name = _nameController.text.trim();
     final roomId = _roomController.text.trim();
     if (name.isEmpty) {
-      ToastUtils.showCustomToast(context, "Please enter your name!", color: Colors.red.shade700);
-      return;
+      name = "Player_${Random().nextInt(9000) + 1000}";
+      _nameController.text = name;
     }
     if (roomId.isEmpty) {
-      ToastUtils.showCustomToast(context, "Please enter a Room ID!", color: Colors.red.shade700);
+      ToastUtils.showCustomToast(
+        context,
+        "Please enter a Room ID!",
+        color: Colors.red.shade700,
+      );
       return;
     }
 
@@ -244,11 +297,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             TextButton.icon(
                               onPressed: () {
                                 Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => const TutorialScreen()),
+                                  MaterialPageRoute(
+                                    builder: (_) => const TutorialScreen(),
+                                  ),
                                 );
                               },
-                              icon: const Icon(Icons.school, color: Colors.blueAccent),
-                              label: const Text("How to Play", style: TextStyle(color: Colors.blueAccent, fontSize: 16)),
+                              icon: const Icon(
+                                Icons.school,
+                                color: Colors.blueAccent,
+                              ),
+                              label: const Text(
+                                "How to Play",
+                                style: TextStyle(
+                                  color: Colors.blueAccent,
+                                  fontSize: 16,
+                                ),
+                              ),
                             ),
                           ],
                         ),

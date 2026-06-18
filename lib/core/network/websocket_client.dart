@@ -11,15 +11,20 @@ class WebSocketClient {
   final String roomId;
   final String playerName;
   final String avatar;
+  final String deviceInfo;
 
-  WebSocketClient({required this.roomId, required this.playerName, this.avatar = ""});
+  WebSocketClient({required this.roomId, required this.playerName, this.avatar = "", this.deviceInfo = ""});
 
   Stream<dynamic> connect() {
+    final Map<String, String> queryParams = {};
+    if (avatar.isNotEmpty) queryParams["avatar"] = avatar;
+    if (deviceInfo.isNotEmpty) queryParams["device_info"] = deviceInfo;
+
     final uri = Uri(
       scheme: kIsSecure ? "wss" : "ws",
       host: kServerHost,
       pathSegments: ["ws", roomId, playerName],
-      queryParameters: avatar.isNotEmpty ? {"avatar": avatar} : null,
+      queryParameters: queryParams.isNotEmpty ? queryParams : null,
     );
     _channel = WebSocketChannel.connect(uri);
     return _channel!.stream;
