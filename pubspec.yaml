@@ -2,7 +2,7 @@ name: cards
 description: "UNO"
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 2.0.0
 
 environment:
   sdk: ^3.11.5
@@ -18,10 +18,7 @@ dependencies:
   shared_preferences: ^2.2.3
   dio: ^5.4.3
   web_socket_channel: ^3.0.0
-  google_fonts: ^6.2.1
   uuid: ^4.4.0
-  dice_bear: ^1.0.4
-  flutter_svg: ^2.0.10
   device_info_plus: ^11.1.0
   emoji_picker_flutter: ^4.4.0
   app_links: ^6.3.2

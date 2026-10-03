@@ -1,15 +1,13 @@
-import 'package:cards/core/utils/toast_utils.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../viewmodel/game_viewmodel.dart';
-import '../models/game_models.dart';
-import '../widgets/uno_card_widget.dart';
-import 'package:dice_bear/dice_bear.dart';
-import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
-import 'package:share_plus/share_plus.dart';
 import 'dart:async';
-
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+import '../models/game_models.dart';
+import '../viewmodel/game_viewmodel.dart';
+import '../widgets/uno_card_widget.dart';
+import '../../../core/widgets/local_avatar.dart';
 
 class GameScreen extends ConsumerStatefulWidget {
   final String roomId;
@@ -28,395 +26,456 @@ class GameScreen extends ConsumerStatefulWidget {
 }
 
 class _GameScreenState extends ConsumerState<GameScreen> {
-  StreamSubscription? _eventSubscription;
+  StreamSubscription<GameEvent>? _events;
+  bool _showingEvent = false;
+  bool? _landscapeLocked;
+
+  GameViewModel get _vm => ref.read(
+    gameViewModelProvider(
+      widget.roomId,
+      widget.playerName,
+      avatar: widget.avatar,
+    ).notifier,
+  );
 
   @override
   void initState() {
     super.initState();
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-
-    Future.microtask(() {
-      final notifier = ref.read(
-        gameViewModelProvider(
-          widget.roomId,
-          widget.playerName,
-          avatar: widget.avatar,
-        ).notifier,
-      );
-      _eventSubscription = notifier.eventStream.listen(_handleGameEvent);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _events = _vm.eventStream.listen(_handleEvent);
     });
-  }
-
-  void _handleGameEvent(GameEvent event) {
-    if (!mounted) return;
-    String title = "";
-    String subtitle = "";
-    IconData? iconData;
-    Color? iconColor;
-
-    if (event.event == 'uno_called') {
-      title = "UNO!";
-      subtitle = "${event.data['player_name']} called UNO!";
-      iconData = Icons.notifications_active;
-      iconColor = Colors.orange;
-    } else if (event.event == 'uno_missed') {
-      title = "Caught!";
-      subtitle =
-          "${event.data['catcher_name']} caught ${event.data['player_name']} missing UNO!";
-      iconData = Icons.mood_bad;
-      iconColor = Colors.red;
-    } else if (event.event == 'player_won') {
-      title = "Winner!";
-      subtitle =
-          "${event.data['player_name']} won the round! (+${event.data['score']} pts)";
-      iconData = Icons.emoji_events;
-      iconColor = Colors.yellow;
-    } else if (event.event == 'game_over') {
-      title = "Game Over";
-      subtitle = "${event.data['loser_name']} lost the game!";
-      iconData = Icons.sentiment_very_dissatisfied;
-      iconColor = Colors.blueGrey;
-    } else if (event.event == 'emoji_reaction') {
-      final emoji = event.data['emoji'];
-      final pName = event.data['player_name'];
-      ToastUtils.showCustomToast(
-        context,
-        "$pName $emoji",
-        color: Colors.blue.shade800,
-      );
-    } else if (event.event == 'shuffle_completed') {
-      ToastUtils.showCustomToast(
-        context,
-        "Deck shuffled!",
-        color: Colors.green.shade800,
-      );
-    }
-
-    if (title.isNotEmpty) {
-      _showAnimationOverlay(title, subtitle, iconData, iconColor);
-    }
-  }
-
-  void _showAnimationOverlay(
-    String title,
-    String subtitle,
-    IconData? iconData,
-    Color? iconColor,
-  ) {
-    bool isDialogOpen = true;
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: "event",
-      transitionDuration: const Duration(milliseconds: 200),
-      pageBuilder: (context, anim1, anim2) {
-        return Center(
-          child: ScaleTransition(
-            scale: CurvedAnimation(parent: anim1, curve: Curves.easeOutBack),
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                padding: const EdgeInsets.all(32),
-                constraints: const BoxConstraints(maxWidth: 500),
-                decoration: BoxDecoration(
-                  color: Colors.black87,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.white24,
-                      blurRadius: 20,
-                      spreadRadius: 5,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (iconData != null)
-                      SizedBox(
-                        height: 150,
-                        child: TweenAnimationBuilder<double>(
-                          tween: Tween<double>(begin: 0.5, end: 1.2),
-                          duration: const Duration(milliseconds: 500),
-                          curve: Curves.easeOutBack,
-                          builder: (context, value, child) {
-                            return Transform.scale(
-                              scale: value,
-                              child: Icon(
-                                iconData,
-                                size: 100,
-                                color: iconColor,
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    const SizedBox(height: 16),
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.yellow,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(fontSize: 24, color: Colors.white),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    ).then((_) {
-      isDialogOpen = false;
-    });
-
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted && isDialogOpen) {
-        Navigator.pop(context);
-      }
-    });
-  }
-
-  void _showEmojiPicker(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return Container(
-          height: 300,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(16),
-              topRight: Radius.circular(16),
-            ),
-          ),
-          child: EmojiPicker(
-            onEmojiSelected: (category, emoji) {
-              ref
-                  .read(
-                    gameViewModelProvider(
-                      widget.roomId,
-                      widget.playerName,
-                      avatar: widget.avatar,
-                    ).notifier,
-                  )
-                  .sendEmoji(emoji.emoji);
-              Navigator.of(ctx).pop();
-            },
-            config: const Config(
-              bottomActionBarConfig: BottomActionBarConfig(showSearchViewButton: false),
-            ),
-          ),
-        );
-      },
-    );
   }
 
   @override
   void dispose() {
-    _eventSubscription?.cancel();
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
+    _events?.cancel();
     super.dispose();
+  }
+
+  void _handleEvent(GameEvent event) {
+    if (!mounted) return;
+    final player = event.data['player_name']?.toString();
+    switch (event.event) {
+      case 'uno_called':
+        _showEvent(
+          'UNO!',
+          '${player ?? 'A player'} called UNO.',
+          Icons.campaign_rounded,
+        );
+        break;
+      case 'uno_missed':
+        _showEvent(
+          'CAUGHT!',
+          '${event.data['catcher_name'] ?? 'A player'} caught ${player ?? 'a player'}.',
+          Icons.gavel_rounded,
+        );
+        break;
+      case 'player_won':
+        _showEvent(
+          'ROUND WIN!',
+          '${player ?? 'A player'} finished first · +${event.data['score'] ?? 0} pts',
+          Icons.emoji_events_rounded,
+        );
+        break;
+      case 'game_over':
+        _showEvent(
+          'GAME OVER',
+          '${event.data['loser_name'] ?? 'A player'} lost the game.',
+          Icons.flag_rounded,
+        );
+        break;
+      case 'emoji_reaction':
+        _showSnack('${player ?? 'Player'} ${event.data['emoji'] ?? ''}');
+        break;
+      case 'shuffle_completed':
+        _showSnack('Deck reshuffled');
+        break;
+    }
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(milliseconds: 1400),
+        ),
+      );
+  }
+
+  void _showEvent(String title, String subtitle, IconData icon) {
+    if (_showingEvent) return;
+    _showingEvent = true;
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: .72),
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 64,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).whenComplete(() => _showingEvent = false);
+    Future.delayed(const Duration(milliseconds: 1700), () {
+      if (mounted && _showingEvent && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+    });
+  }
+
+  void _setOrientation(bool landscape) {
+    if (_landscapeLocked == landscape) return;
+    _landscapeLocked = landscape;
+    SystemChrome.setPreferredOrientations(
+      landscape
+          ? const [
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+            ]
+          : const [
+              DeviceOrientation.portraitUp,
+              DeviceOrientation.portraitDown,
+            ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final gameState = ref.watch(
+    final state = ref.watch(
       gameViewModelProvider(
         widget.roomId,
         widget.playerName,
         avatar: widget.avatar,
       ),
     );
-
-    if (gameState == null) {
-      return Scaffold(
-        appBar: AppBar(title: Text("Connecting to Room ${widget.roomId}")),
-        body: const Center(child: CircularProgressIndicator()),
-      );
+    if (state == null) return const _ConnectingView();
+    if (state.status == GameStatus.waiting) {
+      _setOrientation(false);
+      return _waitingRoom(state: state);
     }
-
-    if (gameState.status == GameStatus.waiting) {
-      return _buildWaitingRoom(context, ref, gameState);
-    }
-
-    return _buildGameRoom(context, ref, gameState);
+    _setOrientation(true);
+    return _gameTable(state: state);
   }
 
-  Future<bool?> _showExitDialog(BuildContext context) {
-    return showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Leave Game?"),
-        content: const Text("Are you sure you want to leave this room?"),
+  Widget _waitingRoom({required GameState state}) {
+    final scheme = Theme.of(context).colorScheme;
+    final isHost =
+        state.players.isNotEmpty &&
+        state.players.first.name == widget.playerName;
+
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton.filledTonal(
+          onPressed: _leave,
+          icon: const Icon(Icons.arrow_back_rounded),
+          tooltip: 'Leave room',
+        ),
+        actionsPadding: const EdgeInsets.only(right: 15),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text("No"),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: scheme.primaryContainer,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              '${state.players.length} / 10',
+              style: TextStyle(
+                color: scheme.onPrimaryContainer,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
           ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text("Yes", style: TextStyle(color: Colors.red)),
+        ],
+        title: Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Waiting room',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                'Room ${widget.roomId}',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
+        ),
+      ),
+      body: SafeArea(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 20),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: scheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: Icon(
+                          Icons.qr_code_2_rounded,
+                          color: scheme.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Share this code',
+                              style: Theme.of(context).textTheme.labelMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              widget.roomId,
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 2.5,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton.filledTonal(
+                        onPressed: _copyRoom,
+                        icon: const Icon(Icons.copy_rounded),
+                        tooltip: 'Copy',
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton.filledTonal(
+                        onPressed: _shareRoom,
+                        icon: const Icon(Icons.share_rounded),
+                        tooltip: 'Share',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Players',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                          const Spacer(),
+                          Text(
+                            state.players.isEmpty
+                                ? 'Waiting…'
+                                : '${state.players.length} joined',
+                            style: TextStyle(color: scheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (state.players.isEmpty)
+                        const SizedBox(
+                          height: 42,
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      else
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: state.players.map(_playerChip).toList(),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              // const SizedBox(height: 12),
+              const Spacer(),
+              if (isHost && state.players.length >= 2)
+                SizedBox(
+                  width: 320,
+                  child: FilledButton.icon(
+                    onPressed: _vm.startGame,
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('Start game'),
+                  ),
+                )
+              else
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.hourglass_top_rounded, color: scheme.primary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          state.players.length < 2
+                              ? 'Share the code and wait for another player.'
+                              : 'Waiting for the host to start the game.',
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _playerChip(Player p) {
+    final scheme = Theme.of(context).colorScheme;
+    final mine = p.name == widget.playerName;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: mine ? scheme.primaryContainer : scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: mine ? scheme.primary : scheme.outlineVariant,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _Avatar(seed: p.name, size: 26),
+          const SizedBox(width: 7),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: Text(
+              p.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: scheme.onSurface,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          if (mine)
+            Padding(
+              padding: const EdgeInsets.only(left: 5),
+              child: Text(
+                'YOU',
+                style: TextStyle(
+                  color: scheme.primary,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  bool _canPlay(UnoCard card, GameState state, int handLength) {
-    if (handLength == 1 && card.value.index > CardValue.nine.index) {
-      return false;
-    }
-    if (handLength == state.initialCards &&
-        card.value.index > CardValue.nine.index) {
-      return false;
-    }
-    if (state.pendingPenalty > 0) {
-      if (!state.stackingEnabled) return false;
-      if (state.discardPile.isEmpty) return false;
-      final topCard = state.discardPile.last;
-      if (topCard.value == CardValue.drawTwo &&
-          card.value == CardValue.drawTwo) {
-        return true;
-      }
-      if (topCard.value == CardValue.wildDrawFour &&
-          card.value == CardValue.wildDrawFour) {
-        return true;
-      }
-      return false;
-    }
-    if (card.color == CardColor.wild) return true;
-    if (card.color == state.currentColor) return true;
-    if (state.discardPile.isNotEmpty &&
-        card.value == state.discardPile.last.value) {
-      return true;
-    }
-    return false;
-  }
+  Widget _gameTable({required GameState state}) {
+    final myIndex = state.players.indexWhere(
+      (p) => p.name == widget.playerName,
+    );
+    if (myIndex < 0) return const _ConnectingView(label: 'Rejoining table…');
+    final me = state.players[myIndex];
+    final opponents = state.players
+        .where((p) => p.name != widget.playerName)
+        .toList();
+    final isMyTurn = state.currentTurnIndex == myIndex;
 
-  Widget _buildWaitingRoom(
-    BuildContext context,
-    WidgetRef ref,
-    GameState state,
-  ) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Room: ${widget.roomId}"),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.close),
-            tooltip: "Close Room",
-            onPressed: () {
-              ref
-                  .read(
-                    gameViewModelProvider(
-                      widget.roomId,
-                      widget.playerName,
-                      avatar: widget.avatar,
-                    ).notifier,
-                  )
-                  .closeRoom();
-              Navigator.of(context).pop();
-            },
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (!didPop && await _showExitDialog()) _leave();
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF071A2E),
+        body: DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: RadialGradient(
+              center: Alignment.center,
+              radius: 1.15,
+              colors: [Color(0xFF0D5AA7), Color(0xFF071A2E)],
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.exit_to_app),
-            tooltip: "Leave",
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 32.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    "Waiting for players...",
-                    style: TextStyle(fontSize: 24),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    "Players joined: ${state.players.length}",
-                    style: const TextStyle(fontSize: 18),
-                  ),
-                  const SizedBox(height: 10),
-                  ...state.players.map(
-                    (p) => Text(
-                      p.name,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+          child: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Column(
+                  children: [
+                    _topBar(
+                      state: state,
+                      opponents: opponents,
+                      isMyTurn: isMyTurn,
                     ),
-                  ),
-                  const SizedBox(height: 40),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.copy),
-                        label: const Text("Copy ID"),
-                        onPressed: () {
-                          Clipboard.setData(ClipboardData(text: widget.roomId));
-                          ToastUtils.showCustomToast(context, "Room ID copied!");
-                        },
-                      ),
-                      const SizedBox(width: 16),
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.share),
-                        label: const Text("Share Link"),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green.shade600,
-                          foregroundColor: Colors.white,
-                        ),
-                        onPressed: () {
-                          final link = "https://thetwodigiter.app/join/${widget.roomId}";
-                          Share.share("Let's play UNO! Join my room using code: ${widget.roomId} or click this link to join directly: $link");
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 40),
-                  if (state.players.length >= 2 && state.players.isNotEmpty && state.players.first.name == widget.playerName)
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
-                        textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                      ),
-                      onPressed: () => ref
-                          .read(
-                            gameViewModelProvider(
-                              widget.roomId,
-                              widget.playerName,
-                              avatar: widget.avatar,
-                            ).notifier,
-                          )
-                          .startGame(),
-                      child: const Text("Start Game"),
-                    )
-                  else if (state.players.length >= 2)
-                    const Text(
-                      "Waiting for the host to start...",
-                      style: TextStyle(fontSize: 16, fontStyle: FontStyle.italic, color: Colors.white70),
+                    Expanded(
+                      child: _board(state: state, isMyTurn: isMyTurn),
                     ),
-                ],
-              ),
+                    _handPanel(
+                      state: state,
+                      me: me,
+                      isMyTurn: isMyTurn,
+                      availableHeight: constraints.maxHeight * .30,
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -424,721 +483,668 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     );
   }
 
-  Widget _buildGameRoom(BuildContext context, WidgetRef ref, GameState state) {
-    final myIndex = state.players.indexWhere(
-      (p) => p.name == widget.playerName,
-    );
-    if (myIndex == -1) {
-      return const Scaffold(
-        body: Center(child: Text("Player not found in state.")),
-      );
-    }
-    final me = state.players[myIndex];
-    final isMyTurn = state.currentTurnIndex == myIndex;
-    final opponents = state.players
-        .where((p) => p.name != widget.playerName)
-        .toList();
-
-    Widget buildColorIndicator(CardColor color) {
-      Color bgColor;
-      switch (color) {
-        case CardColor.red:
-          bgColor = Colors.red;
-          break;
-        case CardColor.blue:
-          bgColor = Colors.blue;
-          break;
-        case CardColor.green:
-          bgColor = Colors.green;
-          break;
-        case CardColor.yellow:
-          bgColor = Colors.yellow;
-          break;
-        default:
-          bgColor = Colors.black;
-      }
-      return Container(
-        width: 20,
-        height: 20,
-        decoration: BoxDecoration(
-          color: bgColor,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white),
+  Widget _topBar({
+    required GameState state,
+    required List<Player> opponents,
+    required bool isMyTurn,
+  }) => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+    child: Row(
+      children: [
+        IconButton.filledTonal(
+          onPressed: _leave,
+          icon: const Icon(Icons.arrow_back_rounded),
+          tooltip: 'Leave',
         ),
-      );
-    }
-
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        final shouldLeave = await _showExitDialog(context);
-        if (shouldLeave == true && context.mounted) {
-          Navigator.of(context).pop();
-        }
-      },
-      child: Scaffold(
-        backgroundColor: Colors.green[800],
-        body: SafeArea(
-          child: Column(
-            children: [
-              Expanded(
-                flex: 4,
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 9,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: opponents.length,
-                        itemBuilder: (context, index) {
-                          final opp = opponents[index];
-                          final isOppTurn =
-                              state.currentTurnIndex ==
-                              state.players.indexOf(opp);
-                          return Container(
-                            margin: const EdgeInsets.all(8),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isOppTurn
-                                  ? Colors.yellow.withValues(alpha: 0.5)
-                                  : Colors.black26,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey[800],
-                                      shape: BoxShape.circle,
-                                    ),
-                                    clipBehavior: Clip.antiAlias,
-                                    child: Opacity(
-                                      opacity: opp.isConnected ? 1.0 : 0.3,
-                                      child: opp.avatar.isNotEmpty
-                                          ? DiceBearBuilder(
-                                              sprite: DiceBearStyle.toonHead,
-                                              seed: opp.avatar,
-                                            ).build().toImage()
-                                          : const Icon(
-                                              Icons.person,
-                                              color: Colors.white,
-                                            ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    "${opp.name}${opp.isConnected ? '' : ' (Offline)'}\n(${opp.score} pts)",
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      const HiddenCardWidget(
-                                        width: 50,
-                                        height: 75,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        "x${opp.handCount}",
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 22,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  if (opp.unoCalled)
-                                    const Text(
-                                      "UNO!",
-                                      style: TextStyle(
-                                        color: Colors.red,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
+        const SizedBox(width: 8),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: opponents
+                  .map(
+                    (p) => Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: _OpponentPill(
+                        player: p,
+                        active:
+                            state.players.indexOf(p) == state.currentTurnIndex,
                       ),
                     ),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          InkWell(
-                            child: const Icon(
-                              Icons.info,
-                              color: Colors.white,
-                              size: 25,
-                            ),
-                            onTap: () {
-                              showDialog(
-                                context: context,
-                                builder: (ctx) => AlertDialog(
-                                  title: const Text("Game Info"),
-                                  content: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Text(
-                                            "Room ID: ${widget.roomId}",
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 18,
-                                            ),
-                                          ),
-                                          const Spacer(),
-                                          IconButton(
-                                            icon: const Icon(Icons.copy, size: 20),
-                                            tooltip: "Copy Room ID",
-                                            onPressed: () {
-                                              Clipboard.setData(ClipboardData(text: widget.roomId));
-                                              ToastUtils.showCustomToast(context, "Room ID copied to clipboard!");
-                                            },
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                      ElevatedButton.icon(
-                                        icon: const Icon(Icons.share, size: 18),
-                                        label: const Text("Share Link"),
-                                        style: ElevatedButton.styleFrom(
-                                          minimumSize: const Size.fromHeight(36),
-                                        ),
-                                        onPressed: () {
-                                          final link = "https://thetwodigiter.app/join/${widget.roomId}";
-                                          Share.share("Let's play UNO! Join my room using code: ${widget.roomId} or click this link to join directly: $link");
-                                        },
-                                      ),
-                                      const Divider(height: 24),
-                                      Text(
-                                        "Direction: ${state.direction == 1 ? 'Clockwise' : 'Counter-Clockwise'}",
-                                      ),
-                                      Text(
-                                        "Stacking Enabled: ${state.stackingEnabled ? 'Yes' : 'No'}",
-                                      ),
-                                      if (state.pendingPenalty > 0)
-                                        Text(
-                                          "Pending Draw Penalty: +${state.pendingPenalty} cards",
-                                          style: const TextStyle(
-                                            color: Colors.red,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.of(ctx).pop(),
-                                      child: const Text("Close"),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                          InkWell(
-                            child: const Icon(
-                              Icons.exit_to_app,
-                              color: Colors.white,
-                              size: 25,
-                            ),
-                            onTap: () async {
-                              final shouldLeave = await _showExitDialog(
-                                context,
-                              );
-                              if (shouldLeave == true && context.mounted) {
-                                Navigator.of(context).pop();
-                              }
-                            },
-                          ),
-                          if (state.status == GameStatus.finished)
-                            ElevatedButton(
-                              onPressed: () {
-                                ref
-                                    .read(
-                                      gameViewModelProvider(
-                                        widget.roomId,
-                                        widget.playerName,
-                                        avatar: widget.avatar,
-                                      ).notifier,
-                                    )
-                                    .restartGame();
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
-                                foregroundColor: Colors.white,
-                              ),
-                              child: const Text("Next Round"),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              Expanded(
-                flex: 4,
-                child: Center(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (isMyTurn && state.hasDrawn)
-                        ElevatedButton(
-                          onPressed: () => ref
-                              .read(
-                                gameViewModelProvider(
-                                  widget.roomId,
-                                  widget.playerName,
-                                  avatar: widget.avatar,
-                                ).notifier,
-                              )
-                              .passTurn(),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 16,
-                            ),
-                          ),
-                          child: const Text(
-                            "Skip Turn",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        )
-                      else
-                        GestureDetector(
-                          onTap: () {
-                            if (isMyTurn) {
-                              ref
-                                  .read(
-                                    gameViewModelProvider(
-                                      widget.roomId,
-                                      widget.playerName,
-                                      avatar: widget.avatar,
-                                    ).notifier,
-                                  )
-                                  .drawCard();
-                            }
-                          },
-                          child: Stack(
-                            children: [
-                              const HiddenCardWidget(width: 80, height: 120),
-                              if (state.deckCount > 0)
-                                Positioned.fill(
-                                  child: Container(
-                                    margin: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 6,
-                                    ),
-                                    alignment: Alignment.bottomRight,
-                                    child: Text(
-                                      "${state.deckCount}",
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      const SizedBox(width: 20),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.shuffle,
-                          color: Colors.white,
-                          size: 30,
-                        ),
-                        tooltip: "Shuffle Deck",
-                        onPressed: () {
-                          ref
-                              .read(
-                                gameViewModelProvider(
-                                  widget.roomId,
-                                  widget.playerName,
-                                  avatar: widget.avatar,
-                                ).notifier,
-                              )
-                              .proposeShuffle();
-                        },
-                      ),
-                      const SizedBox(width: 20),
-                      if (state.discardPile.isNotEmpty)
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 150),
-                          transitionBuilder: (child, animation) {
-                            return RotationTransition(
-                              turns: Tween(
-                                begin: 0.0,
-                                end: 0.05,
-                              ).animate(animation),
-                              child: ScaleTransition(
-                                scale: animation,
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: Stack(
-                            key: ValueKey(state.discardPile.length),
-                            clipBehavior: Clip.none,
-                            children: [
-                              FittedBox(
-                                fit: BoxFit.contain,
-                                child: UnoCardWidget(
-                                  card: state.discardPile.last,
-                                  height: 120,
-                                  width: 80,
-                                ),
-                              ),
-                              if (state.currentColor != null)
-                                Positioned(
-                                  top: 0,
-                                  right: 0,
-                                  child: buildColorIndicator(
-                                    state.currentColor!,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        )
-                      else
-                        Container(
-                          width: 50,
-                          height: 130,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.white54, width: 2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-
-              Expanded(
-                flex: 6,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isMyTurn
-                        ? Colors.yellow.withValues(alpha: 0.3)
-                        : Colors.transparent,
-                    border: Border(
-                      top: BorderSide(
-                        color: isMyTurn ? Colors.yellow : Colors.transparent,
-                        width: 4,
-                      ),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[800],
-                                  shape: BoxShape.circle,
-                                ),
-                                clipBehavior: Clip.antiAlias,
-                                child: me.avatar.isNotEmpty
-                                    ? DiceBearBuilder(
-                                        sprite: DiceBearStyle.toonHead,
-                                        seed: me.avatar,
-                                      ).build().toImage()
-                                    : const Icon(
-                                        Icons.person,
-                                        color: Colors.white,
-                                      ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                "${me.name} (${me.score} pts)",
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (isMyTurn && state.pendingPenalty > 0)
-                            Text(
-                              "Click the deck to take ${state.pendingPenalty} cards!",
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          if (me.unoCalled)
-                            const Text(
-                              "UNO!",
-                              style: TextStyle(
-                                color: Colors.red,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          Row(
-                            spacing: 10,
-                            children: [
-                              InkWell(
-                                child: const Icon(
-                                  Icons.emoji_emotions,
-                                  color: Colors.white,
-                                  size: 32,
-                                ),
-                                onTap: () {
-                                  _showEmojiPicker(context, ref);
-                                },
-                              ),
-                              ElevatedButton(
-                                onPressed: () {
-                                  final catchable = state.players
-                                      .where(
-                                        (p) =>
-                                            p.id != me.id &&
-                                            p.handCount == 1 &&
-                                            !p.unoCalled,
-                                      )
-                                      .toList();
-                                  if (catchable.isNotEmpty) {
-                                    ref
-                                        .read(
-                                          gameViewModelProvider(
-                                            widget.roomId,
-                                            widget.playerName,
-                                            avatar: widget.avatar,
-                                          ).notifier,
-                                        )
-                                        .catchUno(catchable.first.id);
-                                  } else {
-                                    ref
-                                        .read(
-                                          gameViewModelProvider(
-                                            widget.roomId,
-                                            widget.playerName,
-                                            avatar: widget.avatar,
-                                          ).notifier,
-                                        )
-                                        .sayUno();
-                                  }
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                ),
-                                child: const Text(
-                                  "Call UNO",
-                                  style: TextStyle(color: Colors.white),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (isMyTurn && state.hasDrawn) ...[
-                            const SizedBox(width: 8),
-                            ElevatedButton(
-                              onPressed: () {
-                                ref
-                                    .read(
-                                      gameViewModelProvider(
-                                        widget.roomId,
-                                        widget.playerName,
-                                        avatar: widget.avatar,
-                                      ).notifier,
-                                    )
-                                    .passTurn();
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.orange,
-                              ),
-                              child: const Text(
-                                "Skip Turn",
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      Expanded(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(me.hand.length, (index) {
-                            final card = me.hand[index];
-                            final playable = _canPlay(
-                              card,
-                              state,
-                              me.hand.length,
-                            );
-                            return Flexible(
-                              child: GestureDetector(
-                                onTap: () {
-                                  if (!isMyTurn) return;
-                                  if (!playable) {
-                                    ToastUtils.showCustomToast(
-                                      context,
-                                      "You cannot play this card right now.",
-                                    );
-                                    return;
-                                  }
-                                  if (card.color == CardColor.wild) {
-                                    _showColorPicker(context, ref, index);
-                                  } else {
-                                    ref
-                                        .read(
-                                          gameViewModelProvider(
-                                            widget.roomId,
-                                            widget.playerName,
-                                            avatar: widget.avatar,
-                                          ).notifier,
-                                        )
-                                        .playCard(index);
-                                  }
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 1.0,
-                                  ),
-                                  child: Opacity(
-                                    opacity: playable || !isMyTurn ? 1.0 : 0.5,
-                                    child: FittedBox(
-                                      fit: BoxFit.contain,
-                                      child: UnoCardWidget(
-                                        card: card,
-                                        height: 150,
-                                        width: 100,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+                  )
+                  .toList(),
+            ),
           ),
         ),
-      ),
-    );
-  }
+        _TurnPill(active: isMyTurn),
+        const SizedBox(width: 8),
+        IconButton.filledTonal(
+          onPressed: _openInfo,
+          icon: const Icon(Icons.info_outline_rounded),
+          tooltip: 'Game info',
+        ),
+      ],
+    ),
+  );
 
-  void _showColorPicker(BuildContext context, WidgetRef ref, int cardIndex) {
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text("Choose Color"),
-          content: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _colorBtn(
-                ctx,
-                ref,
-                cardIndex,
-                CardColor.red,
-                const Color(0xFFE53935),
+  Widget _board({required GameState state, required bool isMyTurn}) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cardHeight = constraints.maxHeight.clamp(92.0, 148.0).toDouble();
+        final cardWidth = cardHeight * 2 / 3;
+        if (state.status == GameStatus.finished) {
+          final winners = state.players.where((p) => p.isWinner);
+          final winner = winners.isEmpty ? null : winners.first;
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(22),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.emoji_events_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 42,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        winner == null
+                            ? 'Round complete'
+                            : '${winner.name} wins!',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 14),
+                      FilledButton.icon(
+                        onPressed: _vm.restartGame,
+                        icon: const Icon(Icons.replay_rounded),
+                        label: const Text('Next round'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              _colorBtn(
-                ctx,
-                ref,
-                cardIndex,
-                CardColor.blue,
-                const Color(0xFF1E88E5),
-              ),
-              _colorBtn(
-                ctx,
-                ref,
-                cardIndex,
-                CardColor.green,
-                const Color(0xFF43A047),
-              ),
-              _colorBtn(
-                ctx,
-                ref,
-                cardIndex,
-                CardColor.yellow,
-                const Color(0xFFFFB300),
-              ),
-            ],
+            ),
+          );
+        }
+        return Center(
+          child: FittedBox(
+            fit: BoxFit.contain,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _deckButton(
+                  state: state,
+                  enabled: isMyTurn,
+                  width: cardWidth,
+                  height: cardHeight,
+                ),
+                const SizedBox(width: 18),
+                if (state.discardPile.isNotEmpty)
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 260),
+                    child: UnoCardWidget(
+                      key: ValueKey(state.discardPile.length),
+                      card: state.discardPile.last,
+                      width: cardWidth,
+                      height: cardHeight,
+                    ),
+                  )
+                else
+                  SizedBox(width: cardWidth, height: cardHeight),
+                if (state.currentColor != null) ...[
+                  const SizedBox(width: 12),
+                  _ColorBadge(color: state.currentColor!),
+                ],
+              ],
+            ),
           ),
         );
       },
     );
   }
 
-  Widget _colorBtn(
-    BuildContext ctx,
-    WidgetRef ref,
-    int index,
-    CardColor color,
-    Color displayColor,
-  ) {
-    return GestureDetector(
-      onTap: () {
-        ref
-            .read(
-              gameViewModelProvider(
-                widget.roomId,
-                widget.playerName,
-                avatar: widget.avatar,
-              ).notifier,
-            )
-            .playCard(index, chosenColor: color);
-        Navigator.of(ctx).pop();
-      },
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: displayColor,
-          shape: BoxShape.circle,
-          boxShadow: const [
-            BoxShadow(
-              color: Colors.black26,
-              blurRadius: 2,
-              offset: Offset(1, 1),
+  Widget _deckButton({
+    required GameState state,
+    required bool enabled,
+    required double width,
+    required double height,
+  }) => GestureDetector(
+    onTap: enabled
+        ? () {
+            HapticFeedback.lightImpact();
+            _vm.drawCard();
+          }
+        : null,
+    child: Stack(
+      clipBehavior: Clip.none,
+      children: [
+        HiddenCardWidget(width: width, height: height),
+        Positioned(
+          right: -10,
+          bottom: -6,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Text(
+              '${state.deckCount}',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _handPanel({
+    required GameState state,
+    required Player me,
+    required bool isMyTurn,
+    required double availableHeight,
+  }) {
+    final canDraw = isMyTurn && state.pendingPenalty == 0;
+    final canCall = me.handCount == 1 && !me.unoCalled;
+    final panelHeight = availableHeight.clamp(150.0, 220.0).toDouble();
+    return Container(
+      height: panelHeight,
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: .22),
+        border: Border(
+          top: BorderSide(
+            color: isMyTurn ? const Color(0xFF8AB4F8) : Colors.white10,
+            width: isMyTurn ? 2 : 1,
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 34,
+            child: Row(
+              children: [
+                _Avatar(seed: me.name, size: 28),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    '${me.name} · ${me.score} pts',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (isMyTurn) const _TurnPill(active: true, compact: true),
+                const SizedBox(width: 5),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      IconButton.filledTonal(
+                        onPressed: _showEmojiPicker,
+                        icon: const Icon(
+                          Icons.emoji_emotions_outlined,
+                          size: 19,
+                        ),
+                        tooltip: 'Emoji',
+                      ),
+                      if (state.players.any(
+                        (p) =>
+                            p.name != widget.playerName &&
+                            p.handCount == 1 &&
+                            !p.unoCalled,
+                      ))
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: FilledButton.tonalIcon(
+                            onPressed: () {
+                              final target = state.players.firstWhere(
+                                (p) =>
+                                    p.name != widget.playerName &&
+                                    p.handCount == 1 &&
+                                    !p.unoCalled,
+                              );
+                              _vm.catchUno(target.id);
+                            },
+                            icon: const Icon(Icons.gavel_rounded, size: 18),
+                            label: const Text('Catch'),
+                          ),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4),
+                        child: FilledButton.tonalIcon(
+                          onPressed: canCall ? _vm.sayUno : null,
+                          icon: const Icon(Icons.campaign_outlined, size: 18),
+                          label: const Text('UNO'),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4),
+                        child: state.hasDrawn && isMyTurn
+                            ? FilledButton.tonal(
+                                onPressed: _vm.passTurn,
+                                child: const Text('Pass'),
+                              )
+                            : FilledButton.tonalIcon(
+                                onPressed: canDraw ? _vm.drawCard : null,
+                                icon: const Icon(
+                                  Icons.style_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('Draw'),
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+          Expanded(
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              itemCount: me.hand.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 5),
+              itemBuilder: (context, index) {
+                final card = me.hand[index];
+                final playable = _canPlay(card, state);
+                return AnimatedOpacity(
+                  opacity: isMyTurn && !playable ? .42 : 1,
+                  duration: const Duration(milliseconds: 160),
+                  child: UnoCardWidget(
+                    card: card,
+                    width: 64,
+                    height: 96,
+                    enabled: isMyTurn && playable,
+                    onTap: isMyTurn && playable
+                        ? () => _playCard(card, index)
+                        : null,
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _canPlay(UnoCard card, GameState state) {
+    if (state.pendingPenalty > 0) {
+      if (!state.stackingEnabled || state.discardPile.isEmpty) return false;
+      final top = state.discardPile.last.value;
+      return (top == CardValue.drawTwo && card.value == CardValue.drawTwo) ||
+          (top == CardValue.wildDrawFour &&
+              card.value == CardValue.wildDrawFour);
+    }
+    if (card.color == CardColor.wild) return true;
+    if (card.color == state.currentColor) return true;
+    return state.discardPile.isNotEmpty &&
+        card.value == state.discardPile.last.value;
+  }
+
+  void _playCard(UnoCard card, int index) {
+    HapticFeedback.selectionClick();
+    if (card.color == CardColor.wild) {
+      _showColorPicker(index);
+    } else {
+      _vm.playCard(index);
+    }
+  }
+
+  Future<void> _showColorPicker(int index) async {
+    final color = await showModalBottomSheet<CardColor>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Choose the next color',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _ColorChoice(
+                    color: CardColor.red,
+                    onTap: () => Navigator.pop(ctx, CardColor.red),
+                  ),
+                  _ColorChoice(
+                    color: CardColor.blue,
+                    onTap: () => Navigator.pop(ctx, CardColor.blue),
+                  ),
+                  _ColorChoice(
+                    color: CardColor.green,
+                    onTap: () => Navigator.pop(ctx, CardColor.green),
+                  ),
+                  _ColorChoice(
+                    color: CardColor.yellow,
+                    onTap: () => Navigator.pop(ctx, CardColor.yellow),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (color != null) _vm.playCard(index, chosenColor: color);
+  }
+
+  void _showEmojiPicker() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SizedBox(
+        height: 330,
+        child: EmojiPicker(
+          onEmojiSelected: (_, emoji) {
+            _vm.sendEmoji(emoji.emoji);
+            Navigator.pop(ctx);
+          },
+        ),
+      ),
+    );
+  }
+
+  void _openInfo() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Table ${widget.roomId}',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 14),
+              _InfoLine('Direction', stateDirection(ref)),
+              _InfoLine(
+                'Stacking',
+                ref
+                            .read(
+                              gameViewModelProvider(
+                                widget.roomId,
+                                widget.playerName,
+                                avatar: widget.avatar,
+                              ),
+                            )
+                            ?.stackingEnabled ==
+                        true
+                    ? 'On'
+                    : 'Off',
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _copyRoom();
+                },
+                icon: const Icon(Icons.copy),
+                label: const Text('Copy room code'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _shareRoom();
+                },
+                icon: const Icon(Icons.share),
+                label: const Text('Share room'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String stateDirection(WidgetRef ref) {
+    final s = ref.read(
+      gameViewModelProvider(
+        widget.roomId,
+        widget.playerName,
+        avatar: widget.avatar,
+      ),
+    );
+    return s?.direction == 1 ? 'Clockwise' : 'Counter-clockwise';
+  }
+
+  Future<bool> _showExitDialog() async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Leave game?'),
+          content: const Text(
+            'You can rejoin this room later with the same room code.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Stay'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Leave'),
             ),
           ],
+        ),
+      ) ??
+      false;
+
+  void _leave() {
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  void _copyRoom() {
+    Clipboard.setData(ClipboardData(text: widget.roomId));
+    _showSnack('Room code copied');
+  }
+
+  void _shareRoom() {
+    Share.share(
+      'Let’s play UNO! Room code: ${widget.roomId}\nhttps://thetwodigiter.app/join/${widget.roomId}',
+    );
+  }
+}
+
+class _ConnectingView extends StatelessWidget {
+  final String label;
+  const _ConnectingView({this.label = 'Connecting to the table…'});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          Text(label),
+        ],
+      ),
+    ),
+  );
+}
+
+class _OpponentPill extends StatelessWidget {
+  final Player player;
+  final bool active;
+  const _OpponentPill({required this.player, required this.active});
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: active
+            ? scheme.primaryContainer.withValues(alpha: .92)
+            : Colors.white.withValues(alpha: .07),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: active ? scheme.primary : Colors.white.withValues(alpha: .10),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _Avatar(seed: player.name, size: 25),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 110),
+            child: Text(
+              player.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '${player.handCount}',
+            style: const TextStyle(color: Colors.white60),
+          ),
+          if (player.unoCalled)
+            const Padding(
+              padding: EdgeInsets.only(left: 5),
+              child: Text(
+                'UNO',
+                style: TextStyle(
+                  color: Color(0xFF9FC3FF),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TurnPill extends StatelessWidget {
+  final bool active;
+  final bool compact;
+  const _TurnPill({required this.active, this.compact = false});
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 11, vertical: 6),
+      decoration: BoxDecoration(
+        color: active
+            ? scheme.primaryContainer
+            : Colors.white.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        active ? 'YOUR TURN' : 'TABLE',
+        style: TextStyle(
+          color: active ? scheme.onPrimaryContainer : Colors.white70,
+          fontSize: compact ? 9 : 10,
+          fontWeight: FontWeight.w900,
+          letterSpacing: .7,
         ),
       ),
     );
   }
 }
+
+class _Avatar extends StatelessWidget {
+  final String seed;
+  final double size;
+  const _Avatar({required this.seed, required this.size});
+  @override
+  Widget build(BuildContext context) => LocalAvatar(seed: seed, size: size);
+}
+
+class _ColorBadge extends StatelessWidget {
+  final CardColor color;
+  const _ColorBadge({required this.color});
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 18,
+    height: 18,
+    decoration: BoxDecoration(
+      color: _color(color),
+      shape: BoxShape.circle,
+      border: Border.all(color: Colors.white, width: 2),
+    ),
+  );
+}
+
+class _ColorChoice extends StatelessWidget {
+  final CardColor color;
+  final VoidCallback onTap;
+  const _ColorChoice({required this.color, required this.onTap});
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(32),
+    child: Container(
+      width: 54,
+      height: 54,
+      decoration: BoxDecoration(
+        color: _color(color),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: const [BoxShadow(blurRadius: 8, color: Colors.black26)],
+      ),
+    ),
+  );
+}
+
+class _InfoLine extends StatelessWidget {
+  final String label;
+  final String value;
+  const _InfoLine(this.label, this.value);
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+        const Spacer(),
+        Text(value.trim()),
+      ],
+    ),
+  );
+}
+
+Color _color(CardColor color) => switch (color) {
+  CardColor.red => const Color(0xFFED1C24),
+  CardColor.blue => const Color(0xFF0877C9),
+  CardColor.green => const Color(0xFF16833B),
+  CardColor.yellow => const Color(0xFFF9C900),
+  CardColor.wild => const Color(0xFF17191D),
+};

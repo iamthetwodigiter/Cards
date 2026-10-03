@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:dice_bear/dice_bear.dart';
-import 'dart:math';
+import '/core/widgets/local_avatar.dart';
 import '../../tutorial/view/tutorial_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -12,136 +11,147 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final TextEditingController _nameController = TextEditingController();
-  String _avatarSeed = "Felix";
-  bool _isLoading = true;
+  final _nameController = TextEditingController();
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    _load();
   }
 
-  Future<void> _loadSettings() async {
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
-      _nameController.text = prefs.getString('player_name') ?? '';
-      _avatarSeed = prefs.getString('avatar_seed') ?? 'Felix';
-      _isLoading = false;
+      _nameController.text = prefs.getString('playerName') ?? '';
+      _loading = false;
     });
   }
 
-  Future<void> _saveSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('player_name', _nameController.text.trim());
-    await prefs.setString('avatar_seed', _avatarSeed);
-    if (mounted) {
+  Future<void> _save() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Settings saved!')),
+        const SnackBar(content: Text('Give yourself a player name first.')),
       );
-      Navigator.of(context).pop();
+      return;
     }
-  }
-
-  void _randomizeAvatar() {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    final random = Random();
-    final newSeed = List.generate(8, (index) => chars[random.nextInt(chars.length)]).join();
-    setState(() {
-      _avatarSeed = newSeed;
-    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('playerName', name);
+    if (!mounted) return;
+    Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    Avatar avatar = DiceBearBuilder(
-      sprite: DiceBearStyle.toonHead,
-      seed: _avatarSeed,
-    ).build();
-
+    final theme = Theme.of(context);
+    final name = _nameController.text.trim();
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Settings")),
+      appBar: AppBar(title: const Text('Settings')),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Text(
-                "Profile Setup",
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 30),
-              Container(
-                width: 150,
-                height: 150,
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  shape: BoxShape.circle,
-                  boxShadow: const [
-                    BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 5)),
-                  ],
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: avatar.toImage(),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton.icon(
-                onPressed: _randomizeAvatar,
-                icon: const Icon(Icons.shuffle),
-                label: const Text("Randomize Avatar"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 40),
-              TextField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Your Name',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person),
-                ),
-              ),
-              const SizedBox(height: 40),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: () {
-                    if (_nameController.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Name cannot be empty")),
-                      );
-                      return;
-                    }
-                    _saveSettings();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 620),
+              child: Column(
+                children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        children: [
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'PROFILE',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          LocalAvatar(seed: name, size: 132),
+                          const SizedBox(height: 12),
+                          Text(
+                            name.isEmpty ? 'Your player name' : name,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 22),
+                          TextField(
+                            controller: _nameController,
+                            maxLength: 18,
+                            onChanged: (_) => setState(() {}),
+                            decoration: const InputDecoration(
+                              labelText: 'Player name',
+                              prefixIcon: Icon(Icons.person_outline_rounded),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Your avatar is generated from the first letter of your name.',
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  child: const Text("Save & Back"),
-                ),
+                  const SizedBox(height: 14),
+                  Card(
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.school_outlined),
+                          title: const Text('How to play'),
+                          subtitle: const Text(
+                            'Rules, actions, wild cards and UNO calls',
+                          ),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const TutorialScreen(),
+                            ),
+                          ),
+                        ),
+                        const Divider(height: 1),
+                        const ListTile(
+                          leading: Icon(Icons.palette_outlined),
+                          title: Text('Material 3 theme'),
+                          subtitle: Text(
+                            'Automatically follows the system light/dark appearance',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  FilledButton.icon(
+                    onPressed: _save,
+                    icon: const Icon(Icons.check_rounded),
+                    label: const Text('Save profile'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 20),
-              TextButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const TutorialScreen()),
-                  );
-                },
-                icon: const Icon(Icons.school, color: Colors.blueAccent),
-                label: const Text("Replay Tutorial", style: TextStyle(color: Colors.blueAccent, fontSize: 16)),
-              ),
-            ],
+            ),
           ),
         ),
       ),

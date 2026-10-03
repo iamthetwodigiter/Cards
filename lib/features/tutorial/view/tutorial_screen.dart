@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../game/widgets/uno_card_widget.dart';
 import '../../game/models/game_models.dart';
+import '../../game/widgets/uno_card_widget.dart';
 
 class TutorialScreen extends StatefulWidget {
   const TutorialScreen({super.key});
@@ -10,409 +10,509 @@ class TutorialScreen extends StatefulWidget {
 }
 
 class _TutorialScreenState extends State<TutorialScreen> {
-  final PageController _pageController = PageController();
-  int _currentPage = 0;
+  final _controller = PageController();
+  int _page = 0;
 
-  final List<Map<String, dynamic>> _tutorialSteps = [
-    {
-      "title": "Welcome to UNO!",
-      "description": "The goal is to get rid of all your cards. You can play a card if it matches the color or the number of the top card on the discard pile.",
-      "ui": _BasicMatchingUI(),
-    },
-    {
-      "title": "Action Cards",
-      "description": "Special cards change the flow of the game! Skip forces the next player to lose their turn. Reverse changes the direction of play. +2 forces the next player to draw 2 cards and skip.",
-      "ui": _ActionCardsUI(),
-    },
-    {
-      "title": "Wild Cards",
-      "description": "Wild cards can be played on ANY card. They allow you to change the current color. The +4 Wild card also forces the next player to draw 4 cards!",
-      "ui": _WildCardsUI(),
-    },
-    {
-      "title": "First & Last Cards",
-      "description": "House Rule: The very first card you play, and the very last card you play, MUST be a standard 0-9 number card. You cannot win on an Action or Wild card!",
-      "ui": _FirstLastCardUI(),
-    },
-    {
-      "title": "Stacking +2s and +4s",
-      "description": "House Rule: If someone plays a +2 on you, you can play another +2 to pass the penalty! It stacks infinitely as long as players keep dropping +2s. The same works for +4s, but you cannot mix +2s and +4s.",
-      "ui": _StackingRuleUI(),
-    },
-    {
-      "title": "No Valid Moves?",
-      "description": "If you don't have a matching card, you must draw one from the deck. If the drawn card is playable, you can play it immediately. If not, your turn automatically passes.",
-      "ui": _NoMovesUI(),
-    },
-    {
-      "title": "Call UNO!",
-      "description": "When you play your second-to-last card, you MUST click 'Call UNO'. If you forget, and an opponent clicks it before you do, they will CATCH you and you'll draw a 2-card penalty!",
-      "ui": _CallUnoUI(),
-    },
+  static const _steps = <_TutorialData>[
+    _TutorialData(
+      'Match color or number',
+      'Play a card that matches the active color or the number/action on the discard pile. Wild cards are always playable.',
+      'COLOR OR VALUE',
+      'A blue 5 can be played on a red 5 because the value matches.',
+      _MatchDemo(),
+    ),
+    _TutorialData(
+      'Use action cards',
+      'Skip blocks the next player, Reverse changes direction, and Draw Two adds two cards to the penalty.',
+      'ACTION CARDS',
+      'Match an action card by its symbol or color.',
+      _ActionDemo(),
+    ),
+    _TutorialData(
+      'Wild means choose',
+      'A Wild card can be played at any time. Choose the next color immediately after playing it.',
+      'WILD CARDS',
+      'Wild Draw Four also adds four cards when the game rules allow it.',
+      _WildDemo(),
+    ),
+    _TutorialData(
+      'Draw when you cannot play',
+      'If your hand has no legal card, draw one. If the new card cannot be used, pass the turn.',
+      'DRAW & PASS',
+      'Keep your hand moving. The deck is your second chance.',
+      _DrawDemo(),
+    ),
+    _TutorialData(
+      'Call UNO at one card',
+      'When you are down to one card, call UNO. Another player can catch an uncalled UNO.',
+      'ONE CARD LEFT',
+      'Tap UNO as soon as your hand reaches one card.',
+      _UnoDemo(),
+    ),
   ];
 
   @override
   void dispose() {
-    _pageController.dispose();
+    _controller.dispose();
     super.dispose();
+  }
+
+  void _next() {
+    if (_page == _steps.length - 1) {
+      Navigator.of(context).pop();
+      return;
+    }
+    _controller.nextPage(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final last = _page == _steps.length - 1;
+
     return Scaffold(
-      backgroundColor: Colors.green[800],
       appBar: AppBar(
-        title: const Text("How to Play", style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        leading: IconButton(
+          tooltip: 'Back',
+          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
+        title: const Text('How to play'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(
+              child: Text(
+                '${_page + 1}/${_steps.length}',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: SafeArea(
+        top: false,
         child: Column(
           children: [
             Expanded(
               child: PageView.builder(
-                controller: _pageController,
-                onPageChanged: (index) {
-                  setState(() => _currentPage = index);
-                },
-                itemCount: _tutorialSteps.length,
-                itemBuilder: (context, index) {
-                  final step = _tutorialSteps[index];
-                  return Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                controller: _controller,
+                itemCount: _steps.length,
+                onPageChanged: (value) => setState(() => _page = value),
+                itemBuilder: (context, index) =>
+                    _TutorialPage(data: _steps[index]),
+              ),
+            ),
+            _TutorialControls(
+              page: _page,
+              total: _steps.length,
+              label: last ? 'Done' : 'Next',
+              icon: last ? Icons.check_rounded : Icons.arrow_forward_rounded,
+              onPressed: _next,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TutorialData {
+  final String title;
+  final String description;
+  final String eyebrow;
+  final String takeaway;
+  final Widget demo;
+
+  const _TutorialData(
+    this.title,
+    this.description,
+    this.eyebrow,
+    this.takeaway,
+    this.demo,
+  );
+}
+
+class _TutorialPage extends StatelessWidget {
+  final _TutorialData data;
+  const _TutorialPage({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxHeight < 650;
+        final stageHeight = compact
+            ? 250.0
+            : (constraints.maxHeight * .38).clamp(300.0, 500.0).toDouble();
+
+        return SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(20, compact ? 12 : 20, 20, 20),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: Column(
+                children: [
+                  Text(
+                    data.eyebrow,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    data.title,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -.5,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 640),
+                    child: Text(
+                      data.description,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        height: 1.45,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    height: stageHeight,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(color: scheme.outlineVariant),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Stack(
                       children: [
-                        Text(
-                          step["title"],
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          step["description"],
-                          style: const TextStyle(
-                            fontSize: 18,
-                            color: Colors.white70,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 40),
-                        Expanded(
+                        Positioned(
+                          top: -70,
+                          right: -50,
                           child: Container(
-                            padding: const EdgeInsets.all(16),
+                            width: 180,
+                            height: 180,
                             decoration: BoxDecoration(
-                              color: Colors.black26,
-                              borderRadius: BorderRadius.circular(20),
+                              shape: BoxShape.circle,
+                              color: scheme.primary.withValues(alpha: .08),
                             ),
-                            child: step["ui"],
+                          ),
+                        ),
+                        Center(child: data.demo),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                    decoration: BoxDecoration(
+                      color: scheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.lightbulb_outline_rounded,
+                          color: scheme.primary,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Remember',
+                                style: Theme.of(context).textTheme.labelLarge
+                                    ?.copyWith(
+                                      color: scheme.onPrimaryContainer,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                data.takeaway,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: scheme.onPrimaryContainer,
+                                      height: 1.35,
+                                    ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
-                  );
-                },
-              ),
-            ),
-            _buildBottomControls(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomControls() {
-    return Container(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(
-              _tutorialSteps.length,
-              (index) => Container(
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _currentPage == index ? Colors.white : Colors.white38,
-                ),
+                  ),
+                ],
               ),
             ),
           ),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        );
+      },
+    );
+  }
+}
+
+class _TutorialControls extends StatelessWidget {
+  final int page;
+  final int total;
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  const _TutorialControls({
+    required this.page,
+    required this.total,
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surfaceContainer,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+          child: Row(
             children: [
-              if (_currentPage > 0)
-                TextButton(
-                  onPressed: () {
-                    _pageController.previousPage(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    );
-                  },
-                  child: const Text("Back", style: TextStyle(color: Colors.white70, fontSize: 18)),
-                )
-              else
-                const SizedBox(width: 60),
-              
-              if (_currentPage < _tutorialSteps.length - 1)
-                ElevatedButton(
-                  onPressed: () {
-                    _pageController.nextPage(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.green[800],
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                  ),
-                  child: const Text("Next", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                )
-              else
-                ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.yellow[700],
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                  ),
-                  child: const Text("Finish", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              SizedBox(
+                width: 44,
+                child: Text(
+                  '${page + 1}/$total',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
                 ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    minHeight: 7,
+                    value: (page + 1) / total,
+                    backgroundColor: scheme.surfaceContainerHighest,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              FilledButton.icon(
+                onPressed: onPressed,
+                icon: Icon(icon),
+                label: Text(label),
+              ),
             ],
           ),
-          if (_currentPage == _tutorialSteps.length - 1) ...[
-            const SizedBox(height: 16),
-            const Center(
-              child: Text(
-                "You can replay this tutorial anytime from the Settings page.",
-                style: TextStyle(color: Colors.white54, fontSize: 14),
-              ),
-            ),
-          ]
-        ],
+        ),
       ),
     );
   }
 }
 
-class _BasicMatchingUI extends StatelessWidget {
+class _MatchDemo extends StatelessWidget {
+  const _MatchDemo();
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        const Text("Discard Pile", style: TextStyle(color: Colors.white, fontSize: 16)),
-        SizedBox(
-          height: 120,
-          child: UnoCardWidget(card: UnoCard(color: CardColor.red, value: CardValue.five)),
-        ),
-        const Icon(Icons.arrow_downward, color: Colors.white54, size: 32),
-        const Text("Your Hand (Playable Cards)", style: TextStyle(color: Colors.white, fontSize: 16)),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(height: 100, child: UnoCardWidget(card: UnoCard(color: CardColor.red, value: CardValue.nine))),
-            const SizedBox(width: 10),
-            SizedBox(height: 100, child: UnoCardWidget(card: UnoCard(color: CardColor.blue, value: CardValue.five))),
-          ],
-        )
-      ],
-    );
-  }
+  Widget build(BuildContext context) => const _CardPair(
+    left: UnoCard(color: CardColor.red, value: CardValue.five),
+    right: UnoCard(color: CardColor.blue, value: CardValue.five),
+    caption: 'same number',
+  );
 }
 
-class _ActionCardsUI extends StatelessWidget {
+class _ActionDemo extends StatelessWidget {
+  const _ActionDemo();
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+  Widget build(BuildContext context) => const SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
+    padding: EdgeInsets.symmetric(horizontal: 20),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _DemoCard(
+          card: UnoCard(color: CardColor.yellow, value: CardValue.skip),
+          label: 'SKIP',
+        ),
+        SizedBox(width: 14),
+        _DemoCard(
+          card: UnoCard(color: CardColor.green, value: CardValue.reverse),
+          label: 'REVERSE',
+        ),
+        SizedBox(width: 14),
+        _DemoCard(
+          card: UnoCard(color: CardColor.blue, value: CardValue.drawTwo),
+          label: 'DRAW 2',
+        ),
+      ],
+    ),
+  );
+}
+
+class _WildDemo extends StatelessWidget {
+  const _WildDemo();
+  @override
+  Widget build(BuildContext context) => const Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      _DemoCard(
+        card: UnoCard(color: CardColor.wild, value: CardValue.wild),
+        label: 'WILD',
+      ),
+      SizedBox(width: 22),
+      Icon(Icons.arrow_forward_rounded, size: 34),
+      SizedBox(width: 22),
+      _ColorChoicePreview(),
+    ],
+  );
+}
+
+class _DrawDemo extends StatelessWidget {
+  const _DrawDemo();
+  @override
+  Widget build(BuildContext context) => const Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      HiddenCardWidget(width: 110, height: 165),
+      Padding(
+        padding: EdgeInsets.symmetric(horizontal: 22),
+        child: Icon(Icons.arrow_forward_rounded, size: 34),
+      ),
+      _DemoCard(
+        card: UnoCard(color: CardColor.green, value: CardValue.eight),
+        label: 'DRAWN',
+      ),
+    ],
+  );
+}
+
+class _UnoDemo extends StatelessWidget {
+  const _UnoDemo();
+  @override
+  Widget build(BuildContext context) => const Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      _DemoCard(
+        card: UnoCard(color: CardColor.red, value: CardValue.seven),
+        label: 'ONE LEFT',
+      ),
+      SizedBox(width: 22),
+      Icon(Icons.campaign_rounded, size: 38),
+      SizedBox(width: 10),
+      Text('UNO!', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900)),
+    ],
+  );
+}
+
+class _CardPair extends StatelessWidget {
+  final UnoCard left;
+  final UnoCard right;
+  final String caption;
+  const _CardPair({
+    required this.left,
+    required this.right,
+    required this.caption,
+  });
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(height: 120, child: UnoCardWidget(card: UnoCard(color: CardColor.yellow, value: CardValue.skip))),
-          const SizedBox(width: 10),
-          SizedBox(height: 120, child: UnoCardWidget(card: UnoCard(color: CardColor.green, value: CardValue.reverse))),
-          const SizedBox(width: 10),
-          SizedBox(height: 120, child: UnoCardWidget(card: UnoCard(color: CardColor.blue, value: CardValue.drawTwo))),
+          _DemoCard(card: left, label: 'ACTIVE'),
+          const SizedBox(width: 18),
+          const Icon(Icons.arrow_forward_rounded, size: 36),
+          const SizedBox(width: 18),
+          _DemoCard(card: right, label: 'PLAYABLE'),
         ],
       ),
-    );
-  }
-}
-
-class _WildCardsUI extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(height: 150, child: UnoCardWidget(card: UnoCard(color: CardColor.wild, value: CardValue.wild))),
-          const SizedBox(width: 20),
-          SizedBox(height: 150, child: UnoCardWidget(card: UnoCard(color: CardColor.wild, value: CardValue.wildDrawFour))),
-        ],
+      const SizedBox(height: 10),
+      Text(
+        caption,
+        style: Theme.of(
+          context,
+        ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
       ),
-    );
-  }
+    ],
+  );
 }
 
-class _FirstLastCardUI extends StatelessWidget {
+class _DemoCard extends StatelessWidget {
+  final UnoCard card;
+  final String label;
+  const _DemoCard({required this.card, required this.label});
+
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.check_circle, color: Colors.greenAccent, size: 40),
-            const SizedBox(width: 16),
-            SizedBox(height: 100, child: UnoCardWidget(card: UnoCard(color: CardColor.red, value: CardValue.seven))),
-          ],
-        ),
-        const SizedBox(height: 30),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.cancel, color: Colors.redAccent, size: 40),
-            const SizedBox(width: 16),
-            SizedBox(height: 100, child: UnoCardWidget(card: UnoCard(color: CardColor.blue, value: CardValue.skip))),
-          ],
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      UnoCardWidget(card: card, width: 90, height: 135),
+      const SizedBox(height: 8),
+      Text(
+        label,
+        style: Theme.of(
+          context,
+        ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w900),
+      ),
+    ],
+  );
 }
 
-class _NoMovesUI extends StatelessWidget {
+class _ColorChoicePreview extends StatelessWidget {
+  const _ColorChoicePreview();
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 80,
-              height: 120,
-              decoration: BoxDecoration(
-                color: Colors.black,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.white, width: 2),
-              ),
-              child: const Center(
-                child: Text("UNO", style: TextStyle(color: Colors.red, fontSize: 24, fontWeight: FontWeight.bold)),
-              ),
-            ),
-            const SizedBox(width: 20),
-            const Icon(Icons.arrow_forward, color: Colors.white),
-            const SizedBox(width: 20),
-            SizedBox(height: 120, child: UnoCardWidget(card: UnoCard(color: CardColor.green, value: CardValue.three))),
-          ],
-        ),
-        const SizedBox(height: 30),
-        ElevatedButton(
-          onPressed: () {},
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-          child: const Text("Skip Turn", style: TextStyle(color: Colors.white)),
-        )
+  Widget build(BuildContext context) => Container(
+    width: 112,
+    height: 112,
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(22),
+    ),
+    child: GridView.count(
+      crossAxisCount: 2,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisSpacing: 7,
+      mainAxisSpacing: 7,
+      children: const [
+        _ColorDot(Color(0xFFED1C24)),
+        _ColorDot(Color(0xFFF9C900)),
+        _ColorDot(Color(0xFF16833B)),
+        _ColorDot(Color(0xFF0877C9)),
       ],
-    );
-  }
+    ),
+  );
 }
 
-class _StackingRuleUI extends StatelessWidget {
+class _ColorDot extends StatelessWidget {
+  final Color color;
+  const _ColorDot(this.color);
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Text("Pass the penalty!", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 20),
-        Wrap(
-          alignment: WrapAlignment.center,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 16,
-          runSpacing: 16,
-          children: [
-            Column(
-              children: [
-                const Text("They play +2", style: TextStyle(color: Colors.white70)),
-                const SizedBox(height: 8),
-                SizedBox(height: 100, child: UnoCardWidget(card: UnoCard(color: CardColor.blue, value: CardValue.drawTwo))),
-              ],
-            ),
-            const Icon(Icons.add, color: Colors.white, size: 32),
-            Column(
-              children: [
-                const Text("You play +2", style: TextStyle(color: Colors.white70)),
-                const SizedBox(height: 8),
-                SizedBox(height: 100, child: UnoCardWidget(card: UnoCard(color: CardColor.red, value: CardValue.drawTwo))),
-              ],
-            ),
-            const Icon(Icons.add, color: Colors.white, size: 32),
-            Column(
-              children: [
-                const Text("Next plays +2", style: TextStyle(color: Colors.white70)),
-                const SizedBox(height: 8),
-                SizedBox(height: 100, child: UnoCardWidget(card: UnoCard(color: CardColor.green, value: CardValue.drawTwo))),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        const Text("...and so on! Final player draws 6!", style: TextStyle(color: Colors.redAccent, fontSize: 18, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-      ],
-    );
-  }
-}
-
-class _CallUnoUI extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        ElevatedButton(
-          onPressed: () {},
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red,
-            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-          ),
-          child: const Text("Call UNO", style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-        ),
-        const SizedBox(height: 40),
-        const Text("Or catch an opponent:", style: TextStyle(color: Colors.white70)),
-        const SizedBox(height: 10),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: const BoxDecoration(
-                color: Colors.grey,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.person, color: Colors.white),
-            ),
-            const SizedBox(width: 10),
-            const Text("Player 2", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            const SizedBox(width: 20),
-            SizedBox(height: 60, child: UnoCardWidget(card: UnoCard(color: CardColor.blue, value: CardValue.zero))),
-          ],
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(12),
+    ),
+  );
 }

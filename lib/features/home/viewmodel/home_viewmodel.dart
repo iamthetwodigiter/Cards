@@ -1,4 +1,5 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:dio/dio.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/local_storage.dart';
 
@@ -23,6 +24,14 @@ class HomeViewModel extends _$HomeViewModel {
       );
       return response.data['room_id'];
     } catch (e) {
+      if (e is DioException) {
+        final uri = e.requestOptions.uri;
+        if (e.type == DioExceptionType.connectionError) {
+          throw Exception(
+            'Cannot reach UNO server at $uri. Check the server URL, HTTPS access, and device network.',
+          );
+        }
+      }
       throw Exception('Failed to create room: $e');
     }
   }

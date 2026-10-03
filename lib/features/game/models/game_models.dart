@@ -1,64 +1,75 @@
 enum CardColor { red, blue, green, yellow, wild }
 
 enum CardValue {
-  zero, one, two, three, four, five, six, seven, eight, nine,
-  skip, reverse, drawTwo, wild, wildDrawFour
+  zero,
+  one,
+  two,
+  three,
+  four,
+  five,
+  six,
+  seven,
+  eight,
+  nine,
+  skip,
+  reverse,
+  drawTwo,
+  wild,
+  wildDrawFour,
 }
 
 extension CardColorExt on CardColor {
-  String get stringValue {
-    switch (this) {
-      case CardColor.red: return "red";
-      case CardColor.blue: return "blue";
-      case CardColor.green: return "green";
-      case CardColor.yellow: return "yellow";
-      case CardColor.wild: return "wild";
-    }
-  }
+  String get stringValue => switch (this) {
+    CardColor.red => 'red',
+    CardColor.blue => 'blue',
+    CardColor.green => 'green',
+    CardColor.yellow => 'yellow',
+    CardColor.wild => 'wild',
+  };
 
-  static CardColor fromString(String val) {
-    return CardColor.values.firstWhere((e) => e.stringValue == val);
-  }
+  static CardColor fromString(String? value) => CardColor.values.firstWhere(
+    (e) => e.stringValue == value?.toLowerCase(),
+    orElse: () => CardColor.wild,
+  );
 }
 
 extension CardValueExt on CardValue {
-  String get stringValue {
-    switch (this) {
-      case CardValue.zero: return "0";
-      case CardValue.one: return "1";
-      case CardValue.two: return "2";
-      case CardValue.three: return "3";
-      case CardValue.four: return "4";
-      case CardValue.five: return "5";
-      case CardValue.six: return "6";
-      case CardValue.seven: return "7";
-      case CardValue.eight: return "8";
-      case CardValue.nine: return "9";
-      case CardValue.skip: return "skip";
-      case CardValue.reverse: return "reverse";
-      case CardValue.drawTwo: return "+2";
-      case CardValue.wild: return "wild";
-      case CardValue.wildDrawFour: return "+4";
-    }
-  }
+  String get stringValue => switch (this) {
+    CardValue.zero => '0',
+    CardValue.one => '1',
+    CardValue.two => '2',
+    CardValue.three => '3',
+    CardValue.four => '4',
+    CardValue.five => '5',
+    CardValue.six => '6',
+    CardValue.seven => '7',
+    CardValue.eight => '8',
+    CardValue.nine => '9',
+    CardValue.skip => 'skip',
+    CardValue.reverse => 'reverse',
+    CardValue.drawTwo => '+2',
+    CardValue.wild => 'wild',
+    CardValue.wildDrawFour => '+4',
+  };
 
-  static CardValue fromString(String val) {
-    return CardValue.values.firstWhere((e) => e.stringValue == val);
-  }
+  static CardValue fromString(String? value) => CardValue.values.firstWhere(
+    (e) => e.stringValue == value,
+    orElse: () => CardValue.wild,
+  );
+
+  bool get isAction => index > CardValue.nine.index;
 }
 
 class UnoCard {
   final CardColor color;
   final CardValue value;
 
-  UnoCard({required this.color, required this.value});
+  const UnoCard({required this.color, required this.value});
 
-  factory UnoCard.fromJson(Map<String, dynamic> json) {
-    return UnoCard(
-      color: CardColorExt.fromString(json['color']),
-      value: CardValueExt.fromString(json['value']),
-    );
-  }
+  factory UnoCard.fromJson(Map<String, dynamic> json) => UnoCard(
+    color: CardColorExt.fromString(json['color']?.toString()),
+    value: CardValueExt.fromString(json['value']?.toString()),
+  );
 
   Map<String, dynamic> toJson() => {
     'color': color.stringValue,
@@ -68,6 +79,7 @@ class UnoCard {
 
 class Player {
   final String id;
+  final String deviceId;
   final String name;
   final String avatar;
   final List<UnoCard> hand;
@@ -78,10 +90,11 @@ class Player {
   final bool unoCalled;
   final int score;
 
-  Player({
+  const Player({
     required this.id,
+    this.deviceId = '',
     required this.name,
-    this.avatar = "",
+    this.avatar = '',
     this.hand = const [],
     this.handCount = 0,
     this.isConnected = true,
@@ -92,17 +105,25 @@ class Player {
   });
 
   factory Player.fromJson(Map<String, dynamic> json) {
+    final rawHand = json['hand'];
+    final hand = rawHand is List
+        ? rawHand
+              .whereType<Map>()
+              .map((e) => UnoCard.fromJson(Map<String, dynamic>.from(e)))
+              .toList(growable: false)
+        : const <UnoCard>[];
     return Player(
-      id: json['id'],
-      name: json['name'],
-      avatar: json['avatar'] ?? "",
-      hand: (json['hand'] as List?)?.map((e) => UnoCard.fromJson(e as Map<String, dynamic>)).toList().cast<UnoCard>() ?? [],
-      handCount: json['hand_count'] ?? (json['hand'] as List?)?.length ?? 0,
-      isConnected: json['is_connected'] ?? true,
-      isWinner: json['is_winner'] ?? false,
-      placement: json['placement'],
-      unoCalled: json['uno_called'] ?? false,
-      score: json['score'] ?? 0,
+      id: json['id']?.toString() ?? '',
+      deviceId: json['device_id']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Player',
+      avatar: json['avatar']?.toString() ?? '',
+      hand: hand,
+      handCount: (json['hand_count'] as num?)?.toInt() ?? hand.length,
+      isConnected: json['is_connected'] as bool? ?? true,
+      isWinner: json['is_winner'] as bool? ?? false,
+      placement: (json['placement'] as num?)?.toInt(),
+      unoCalled: json['uno_called'] as bool? ?? false,
+      score: (json['score'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -110,9 +131,10 @@ class Player {
 enum GameStatus { waiting, playing, finished }
 
 extension GameStatusExt on GameStatus {
-  static GameStatus fromString(String val) {
-    return GameStatus.values.firstWhere((e) => e.name == val, orElse: () => GameStatus.waiting);
-  }
+  static GameStatus fromString(String? value) => GameStatus.values.firstWhere(
+    (e) => e.name == value,
+    orElse: () => GameStatus.waiting,
+  );
 }
 
 class GameState {
@@ -130,7 +152,7 @@ class GameState {
   final int initialCards;
   final bool hasDrawn;
 
-  GameState({
+  const GameState({
     required this.roomId,
     this.status = GameStatus.waiting,
     this.players = const [],
@@ -147,20 +169,39 @@ class GameState {
   });
 
   factory GameState.fromJson(Map<String, dynamic> json) {
+    final rawPlayers = json['players'];
+    final rawDiscard = json['discard_pile'];
+    final rawDeck = json['deck'];
+    final players = rawPlayers is List
+        ? rawPlayers
+              .whereType<Map>()
+              .map((e) => Player.fromJson(Map<String, dynamic>.from(e)))
+              .toList(growable: false)
+        : const <Player>[];
+    final discard = rawDiscard is List
+        ? rawDiscard
+              .whereType<Map>()
+              .map((e) => UnoCard.fromJson(Map<String, dynamic>.from(e)))
+              .toList(growable: false)
+        : const <UnoCard>[];
     return GameState(
-      roomId: json['room_id'],
-      status: GameStatusExt.fromString(json['status'] ?? 'waiting'),
-      players: (json['players'] as List?)?.map((e) => Player.fromJson(e as Map<String, dynamic>)).toList().cast<Player>() ?? [],
-      currentTurnIndex: json['current_turn_index'] ?? 0,
-      direction: json['direction'] ?? 1,
-      discardPile: (json['discard_pile'] as List?)?.map((e) => UnoCard.fromJson(e as Map<String, dynamic>)).toList().cast<UnoCard>() ?? [],
-      deckCount: json['deck_count'] ?? (json['deck'] as List?)?.length ?? 0,
-      currentColor: json['current_color'] != null ? CardColorExt.fromString(json['current_color']) : null,
-      pendingPenalty: json['pending_penalty'] ?? 0,
-      lastCardPlayedBy: json['last_card_played_by'],
-      stackingEnabled: json['stacking_enabled'] ?? true,
-      initialCards: json['initial_cards'] ?? 7,
-      hasDrawn: json['has_drawn'] ?? false,
+      roomId: json['room_id']?.toString() ?? '',
+      status: GameStatusExt.fromString(json['status']?.toString()),
+      players: players,
+      currentTurnIndex: (json['current_turn_index'] as num?)?.toInt() ?? 0,
+      direction: (json['direction'] as num?)?.toInt() ?? 1,
+      discardPile: discard,
+      deckCount:
+          (json['deck_count'] as num?)?.toInt() ??
+          (rawDeck is List ? rawDeck.length : 0),
+      currentColor: json['current_color'] == null
+          ? null
+          : CardColorExt.fromString(json['current_color']?.toString()),
+      pendingPenalty: (json['pending_penalty'] as num?)?.toInt() ?? 0,
+      lastCardPlayedBy: json['last_card_played_by']?.toString(),
+      stackingEnabled: json['stacking_enabled'] as bool? ?? true,
+      initialCards: (json['initial_cards'] as num?)?.toInt() ?? 7,
+      hasDrawn: json['has_drawn'] as bool? ?? false,
     );
   }
 }
@@ -168,10 +209,7 @@ class GameState {
 class GameEvent {
   final String event;
   final Map<String, dynamic> data;
-
-  GameEvent(this.event, this.data);
-
-  factory GameEvent.fromJson(Map<String, dynamic> json) {
-    return GameEvent(json['event'] ?? 'unknown', json);
-  }
+  const GameEvent(this.event, this.data);
+  factory GameEvent.fromJson(Map<String, dynamic> json) =>
+      GameEvent(json['event']?.toString() ?? 'unknown', json);
 }

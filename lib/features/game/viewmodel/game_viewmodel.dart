@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:device_info_plus/device_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 import '../../../core/network/websocket_client.dart';
 import '../models/game_models.dart';
 
@@ -13,6 +14,7 @@ part 'game_viewmodel.g.dart';
 class GameViewModel extends _$GameViewModel {
   WebSocketClient? _client;
   final _eventController = StreamController<GameEvent>.broadcast();
+  bool _disposed = false;
 
   Stream<GameEvent> get eventStream => _eventController.stream;
 
@@ -20,51 +22,61 @@ class GameViewModel extends _$GameViewModel {
   GameState? build(String roomId, String playerName, {String avatar = ""}) {
     _connect(avatar);
     ref.onDispose(() {
+      _disposed = true;
       _client?.disconnect();
+      _eventController.close();
     });
     return null;
   }
 
-  void _connect(String avatar) async {
-    String deviceInfo = "Unknown";
-    try {
-      if (!kIsWeb) {
-        final DeviceInfoPlugin deviceInfoPlugin = DeviceInfoPlugin();
-        if (Platform.isAndroid) {
-          final info = await deviceInfoPlugin.androidInfo;
-          deviceInfo = "${info.brand} ${info.model}";
-        } else if (Platform.isIOS) {
-          final info = await deviceInfoPlugin.iosInfo;
-          deviceInfo = "${info.name} ${info.systemName}";
-        } else if (Platform.isWindows) {
-          final info = await deviceInfoPlugin.windowsInfo;
-          deviceInfo = "Windows ${info.computerName}";
-        } else if (Platform.isMacOS) {
-          final info = await deviceInfoPlugin.macOsInfo;
-          deviceInfo = "MacOS ${info.computerName}";
-        }
-      }
-    } catch (_) {}
+  Future<String> _getStableDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    const key = 'uno_device_id';
+    final existing = prefs.getString(key);
+    if (existing != null && existing.isNotEmpty) return existing;
+    final id = 'dev_${const Uuid().v4()}';
+    await prefs.setString(key, id);
+    return id;
+  }
 
-    _client = WebSocketClient(roomId: roomId, playerName: playerName, avatar: avatar, deviceInfo: deviceInfo);
-    _client!.connect().listen((data) {
-      try {
-        final message = jsonDecode(data);
-        if (message['type'] == 'state_update') {
-          state = GameState.fromJson(message['state'] as Map<String, dynamic>);
-        } else if (message['type'] == 'game_event') {
-          _eventController.add(GameEvent.fromJson(message['event'] as Map<String, dynamic>));
-        } else if (message['type'] == 'error') {
-          debugPrint('Error: ${message['message']}');
+  Future<void> _connect(String avatar) async {
+    final deviceId = await _getStableDeviceId();
+    if (_disposed) return;
+
+    _client = WebSocketClient(
+      roomId: roomId,
+      playerName: playerName,
+      avatar: avatar,
+      deviceId: deviceId,
+      deviceInfo: !kIsWeb ? Platform.operatingSystem : 'web',
+    );
+    _client!.connect().listen(
+      (data) {
+        try {
+          final message = jsonDecode(data);
+          if (_disposed) return;
+          if (message['type'] == 'state_update') {
+            state = GameState.fromJson(
+              message['state'] as Map<String, dynamic>,
+            );
+          } else if (message['type'] == 'game_event') {
+            _eventController.add(
+              GameEvent.fromJson(message['event'] as Map<String, dynamic>),
+            );
+          } else if (message['type'] == 'error') {
+            debugPrint('Error: ${message['message']}');
+          }
+        } catch (e, st) {
+          debugPrint('Error processing websocket message: $e\n$st');
         }
-      } catch (e, st) {
-        debugPrint('Error processing websocket message: $e\n$st');
-      }
-    }, onError: (error) {
-      debugPrint('WebSocket Error: $error');
-    }, onDone: () {
-      debugPrint('WebSocket Disconnected');
-    });
+      },
+      onError: (error) {
+        debugPrint('WebSocket Error: $error');
+      },
+      onDone: () {
+        debugPrint('WebSocket Disconnected');
+      },
+    );
   }
 
   void startGame() {
